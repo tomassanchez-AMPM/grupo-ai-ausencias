@@ -1,8 +1,6 @@
-// Cascarón de la app con login simulado: el probador elige con qué usuario
-// entrar y la app muestra solo lo que ese rol permite (sección 3 del diseño).
-// La "sesión" vive en sessionStorage: cada pestaña del navegador puede ser un
-// usuario distinto, compartiendo los mismos datos — ideal para probar el
-// flujo solicitud → aprobación en paralelo.
+// Cascarón de la app con autenticación real (Supabase, enlace mágico).
+// Cada usuario ve solo las secciones que su rol permite (sección 3 del
+// documento de diseño); la base de datos aplica la misma regla vía RLS.
 
 import { useEffect, useState } from 'react'
 import type { Empleado } from './domain/types'
@@ -12,76 +10,12 @@ import { Campana } from './ui/Campana'
 import { Avatar } from './ui/comunes'
 import { EmpleadoView } from './ui/EmpleadoView'
 import { JefeView } from './ui/JefeView'
-
-const CLAVE_SESION = 'rrhh-sesion'
-
-function leerSesion(): string | null {
-  try {
-    return sessionStorage.getItem(CLAVE_SESION)
-  } catch {
-    return null
-  }
-}
-
-function guardarSesion(personaId: string | null) {
-  try {
-    if (personaId) sessionStorage.setItem(CLAVE_SESION, personaId)
-    else sessionStorage.removeItem(CLAVE_SESION)
-  } catch {
-    // Entorno sin almacenamiento: la sesión vive solo en memoria.
-  }
-}
-
-const NOMBRE_ROL: Record<Empleado['rol'], string> = {
-  empleado: 'Empleado',
-  jefe: 'Jefe',
-  admin: 'Admin / RRHH',
-}
-
-function PantallaLogin({ onEntrar }: { onEntrar: (personaId: string) => void }) {
-  const { datos, paisDe, restablecer } = useStore()
-  const activos = datos.empleados.filter((e) => e.activo)
-
-  return (
-    <div className="login-envoltorio">
-      <div className="marca" style={{ justifyContent: 'center', marginBottom: 6 }}>
-        <span className="marca-logo" aria-hidden="true">🌴</span>
-        <span>Ausencias</span>
-      </div>
-      <h1 style={{ textAlign: 'center' }}>¿Quién eres?</h1>
-      <p className="meta" style={{ textAlign: 'center', maxWidth: 440, margin: '6px auto 26px' }}>
-        Prototipo de prueba: elige un usuario para entrar con su rol. En la versión real
-        esto será el inicio de sesión con tu correo.
-      </p>
-      <div className="login-grid">
-        {activos.map((e) => {
-          const pais = paisDe(e)
-          return (
-            <button key={e.id} className="login-card" onClick={() => onEntrar(e.id)}>
-              <Avatar empleado={e} grande />
-              <span style={{ minWidth: 0 }}>
-                <strong style={{ display: 'block', color: 'var(--titulo)' }}>{e.nombre}</strong>
-                <span className="meta">{e.puesto} · {pais.bandera}</span>
-              </span>
-              <span className={`insignia ${e.rol === 'admin' ? 'primaria' : 'neutra'}`}>
-                {NOMBRE_ROL[e.rol]}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-      <p style={{ textAlign: 'center', marginTop: 26 }}>
-        <button className="boton-fantasma" onClick={restablecer} title="Vuelve a los datos de ejemplo originales">
-          ↺ Restablecer datos de ejemplo
-        </button>
-      </p>
-    </div>
-  )
-}
+import { LoginView } from './ui/LoginView'
 
 type Vista = 'yo' | 'equipo' | 'admin'
 
-function Sesion({ persona, onSalir }: { persona: Empleado; onSalir: () => void }) {
+function Sesion({ persona }: { persona: Empleado }) {
+  const { cerrarSesion } = useStore()
   const [vista, setVista] = useState<Vista>('yo')
 
   useEffect(() => setVista('yo'), [persona.id])
@@ -97,7 +31,7 @@ function Sesion({ persona, onSalir }: { persona: Empleado; onSalir: () => void }
           <span className="marca-logo" aria-hidden="true">🌴</span>
           <span>
             Ausencias
-            <small>Prototipo · Grupo multipaís</small>
+            <small>Grupo multipaís</small>
           </span>
         </div>
         <div className="barra-derecha">
@@ -110,12 +44,12 @@ function Sesion({ persona, onSalir }: { persona: Empleado; onSalir: () => void }
               ))}
             </nav>
           )}
-          <span className="chip-persona" title={`${persona.puesto} — sesión de prueba`}>
+          <span className="chip-persona" title={persona.puesto}>
             <Avatar empleado={persona} />
             <span className="chip-persona-nombre">{persona.nombre.split(' ')[0]}</span>
           </span>
           <Campana personaId={persona.id} />
-          <button className="boton-fantasma" onClick={onSalir}>Cambiar usuario</button>
+          <button className="boton-fantasma" onClick={() => void cerrarSesion()}>Cerrar sesión</button>
         </div>
       </header>
 
@@ -128,32 +62,45 @@ function Sesion({ persona, onSalir }: { persona: Empleado; onSalir: () => void }
   )
 }
 
-function Shell() {
-  const { datos } = useStore()
-  const [personaId, setPersonaId] = useState<string | null>(leerSesion)
-
-  const persona = datos.empleados.find((e) => e.id === personaId && e.activo)
-
-  if (!persona) {
-    return (
-      <PantallaLogin
-        onEntrar={(id) => {
-          guardarSesion(id)
-          setPersonaId(id)
-        }}
-      />
-    )
-  }
-
+function PantallaCentrada({ children }: { children: React.ReactNode }) {
   return (
-    <Sesion
-      persona={persona}
-      onSalir={() => {
-        guardarSesion(null)
-        setPersonaId(null)
-      }}
-    />
+    <div className="login-envoltorio" style={{ maxWidth: 460 }}>
+      <div className="tarjeta" style={{ textAlign: 'center' }}>{children}</div>
+    </div>
   )
+}
+
+function Shell() {
+  const { sesion, cerrarSesion } = useStore()
+
+  switch (sesion.fase) {
+    case 'cargando':
+      return (
+        <PantallaCentrada>
+          <p style={{ fontSize: 34 }} aria-hidden="true">🌴</p>
+          <p className="meta">Cargando…</p>
+        </PantallaCentrada>
+      )
+    case 'anonimo':
+      return <LoginView />
+    case 'sin_registro':
+      return (
+        <PantallaCentrada>
+          <p style={{ fontSize: 34 }} aria-hidden="true">🔒</p>
+          <h1>Tu correo no está registrado</h1>
+          <p className="meta" style={{ marginTop: 8 }}>
+            Iniciaste sesión como <strong style={{ color: 'var(--titulo)' }}>{sesion.email}</strong>,
+            pero ese correo no corresponde a ningún empleado activo.
+            Pide al administrador de RRHH que te agregue con este correo exacto.
+          </p>
+          <button className="boton-secundario" style={{ marginTop: 14 }} onClick={() => void cerrarSesion()}>
+            Salir e intentar con otro correo
+          </button>
+        </PantallaCentrada>
+      )
+    case 'activa':
+      return <Sesion persona={sesion.empleado} />
+  }
 }
 
 export default function App() {

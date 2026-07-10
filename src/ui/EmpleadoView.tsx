@@ -32,7 +32,7 @@ function ItemSolicitud({ solicitud, propia }: { solicitud: SolicitudAusencia; pr
           </p>
         )}
         {propia && solicitud.estado === 'pendiente' && (
-          <button className="boton-fantasma" style={{ marginTop: 6, padding: '4px 8px', minHeight: 32 }} onClick={() => cancelarSolicitud(solicitud.id)}>
+          <button className="boton-fantasma" style={{ marginTop: 6, padding: '4px 8px', minHeight: 32 }} onClick={() => void cancelarSolicitud(solicitud.id)}>
             Cancelar solicitud
           </button>
         )}
@@ -61,7 +61,7 @@ export function EmpleadoView({ empleado }: { empleado: Empleado }) {
         <div>
           <h1>Hola, {empleado.nombre.split(' ')[0]} 👋</h1>
           <p className="meta">
-            {empleado.puesto} · {pais.bandera} {pais.nombre}
+            {empleado.puesto} · {pais?.bandera} {pais?.nombre}
           </p>
         </div>
       </div>

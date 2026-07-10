@@ -26,7 +26,10 @@ export function SolicitudForm({ empleado, onCerrar }: { empleado: Empleado; onCe
   const aprobador = aprobadorDe(empleado)
   const hoyISO = formatearISO(new Date())
 
-  const [tipoId, setTipoId] = useState(datos.tiposAusencia[0]?.id ?? '')
+  // Por defecto el tipo más usado: el primero que descuenta saldo (vacaciones).
+  const [tipoId, setTipoId] = useState(
+    datos.tiposAusencia.find((t) => t.descuentaSaldo)?.id ?? datos.tiposAusencia[0]?.id ?? '',
+  )
   const [fechaInicio, setFechaInicio] = useState(hoyISO)
   const [fechaReintegro, setFechaReintegro] = useState(diaSiguiente(hoyISO))
   const [fraccionInicio, setFraccionInicio] = useState<Fraccion>('completo')
@@ -49,16 +52,20 @@ export function SolicitudForm({ empleado, onCerrar }: { empleado: Empleado; onCe
 
   const saldo = tipo?.descuentaSaldo ? saldoDe(empleado, tipo.id) : undefined
 
-  const enviar = () => {
+  const [enviando, setEnviando] = useState(false)
+
+  const enviar = async () => {
     setError(null)
-    if (!rango) return
-    const resultado = crearSolicitud({
+    if (!rango || enviando) return
+    setEnviando(true)
+    const resultado = await crearSolicitud({
       empleadoId: empleado.id,
       tipoAusenciaId: tipoId,
       ...rango,
       comentario: comentario.trim() || undefined,
       adjuntoNombre: adjunto.trim() || undefined,
     })
+    setEnviando(false)
     if (!resultado.ok) {
       setError(resultado.error)
       return
@@ -71,7 +78,7 @@ export function SolicitudForm({ empleado, onCerrar }: { empleado: Empleado; onCe
     return (
       <Modal titulo="Solicitud enviada" onCerrar={onCerrar}>
         <p className="exito-inline">
-          ✓ Tu solicitud fue enviada a {aprobador.nombre} y quedará registrada en tu historial.
+          ✓ Tu solicitud fue enviada a {aprobador?.nombre ?? 'tu aprobador'} y quedará registrada en tu historial.
         </p>
       </Modal>
     )
@@ -175,7 +182,7 @@ export function SolicitudForm({ empleado, onCerrar }: { empleado: Empleado; onCe
           {saldo && (
             <> Saldo disponible: <strong style={{ color: 'var(--texto)' }}>{formatearDias(Math.max(saldo.disponibleMedios - saldo.pendienteMedios, 0))}</strong>.</>
           )}
-          {' '}Aprueba: {aprobador.nombre}.
+          {' '}Aprueba: {aprobador?.nombre ?? 'por definir'}.
         </p>
       ) : (
         <p className="error-inline" style={{ marginBottom: 14 }}>
@@ -187,8 +194,8 @@ export function SolicitudForm({ empleado, onCerrar }: { empleado: Empleado; onCe
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="boton-secundario" onClick={onCerrar}>Cancelar</button>
-        <button className="boton-primario" onClick={enviar} disabled={!rango || !tipo}>
-          Enviar solicitud
+        <button className="boton-primario" onClick={() => void enviar()} disabled={!rango || !tipo || enviando}>
+          {enviando ? 'Enviando…' : 'Enviar solicitud'}
         </button>
       </div>
     </Modal>

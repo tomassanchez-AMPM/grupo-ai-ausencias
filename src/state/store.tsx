@@ -1,22 +1,20 @@
-// Estado global del prototipo. En producción esto sería la API + DB;
-// aquí: React context + localStorage. Las ACCIONES replican el flujo de
-// aprobación fijo de la sección 5.4 (validar → enrutar → notificar → auditar).
+// Estado global respaldado por Supabase. La seguridad real vive en las
+// políticas RLS de la base (supabase/migrations): este cliente solo recibe
+// las filas que el usuario autenticado tiene derecho a ver. El flujo de
+// aprobación replica la sección 5.4: validar → enrutar → notificar → auditar.
 
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { supabase } from '../lib/supabase'
 import { calcularSaldo, type DetalleSaldo } from '../domain/acumulacion'
 import { contarMedioDias, formatearDias, reintegroDe } from '../domain/conteoDias'
 import { formatearISO, formatearCorto, parseFecha } from '../domain/fechas'
 import type {
-  AjusteSaldo, CorreoSaliente, Empleado, Feriado, Fraccion, Notificacion,
-  Pais, PoliticaAusencia, RegistroAuditoria, Rol, SolicitudAusencia, TipoAusencia,
+  AjusteSaldo, Compensacion, Empleado, Feriado, Fraccion, Notificacion,
+  Pais, PoliticaAusencia, RegistroAuditoria, SolicitudAusencia, TipoAusencia,
 } from '../domain/types'
-import * as seed from '../data/seed'
-
-// v5: descarta datos guardados por versiones sin <meta charset> (nombres
-// corrompidos en localStorage). v4: identidad Humand.
-const CLAVE_STORAGE = 'rrhh-prototipo-v5'
+import * as filas from './filas'
 
 export interface DatosApp {
   empleados: Empleado[]
@@ -26,41 +24,22 @@ export interface DatosApp {
   feriados: Feriado[]
   solicitudes: SolicitudAusencia[]
   ajustes: AjusteSaldo[]
+  compensaciones: Compensacion[]
   auditoria: RegistroAuditoria[]
   notificaciones: Notificacion[]
-  correos: CorreoSaliente[]
 }
 
-function datosIniciales(): DatosApp {
-  return {
-    empleados: seed.EMPLEADOS,
-    tiposAusencia: seed.TIPOS_AUSENCIA,
-    politicas: seed.POLITICAS,
-    paises: seed.PAISES,
-    feriados: seed.FERIADOS,
-    solicitudes: seed.SOLICITUDES,
-    ajustes: seed.AJUSTES,
-    auditoria: seed.AUDITORIA,
-    notificaciones: seed.NOTIFICACIONES,
-    correos: seed.CORREOS,
-  }
+const DATOS_VACIOS: DatosApp = {
+  empleados: [], tiposAusencia: [], politicas: [], paises: [], feriados: [],
+  solicitudes: [], ajustes: [], compensaciones: [], auditoria: [], notificaciones: [],
 }
 
-function cargar(): DatosApp {
-  try {
-    const crudo = localStorage.getItem(CLAVE_STORAGE)
-    if (crudo) return JSON.parse(crudo) as DatosApp
-  } catch {
-    // Datos corruptos → se restablece el seed.
-  }
-  return datosIniciales()
-}
-
-let contadorId = 0
-function nuevoId(prefijo: string): string {
-  contadorId += 1
-  return `${prefijo}-${Date.now().toString(36)}-${contadorId}`
-}
+export type EstadoSesion =
+  | { fase: 'cargando' }
+  | { fase: 'anonimo' }
+  /** Hay login pero el correo no corresponde a ningún empleado registrado. */
+  | { fase: 'sin_registro'; email: string }
+  | { fase: 'activa'; empleado: Empleado }
 
 export interface NuevaSolicitud {
   empleadoId: string
@@ -73,42 +52,141 @@ export interface NuevaSolicitud {
   adjuntoNombre?: string
 }
 
+type Resultado = { ok: true } | { ok: false; error: string }
+
 interface StoreValor {
+  sesion: EstadoSesion
   datos: DatosApp
   hoy: string
+  cargandoDatos: boolean
   // Consultas derivadas
   paisDe: (empleado: Empleado) => Pais
   politicaDe: (empleado: Empleado, tipoAusenciaId: string) => PoliticaAusencia | undefined
-  aprobadorDe: (empleado: Empleado) => Empleado
+  aprobadorDe: (empleado: Empleado) => Empleado | undefined
   saldoDe: (empleado: Empleado, tipoAusenciaId: string) => DetalleSaldo | undefined
   equipoDe: (jefeId: string) => Empleado[]
   pendientesDe: (aprobadorId: string) => SolicitudAusencia[]
-  // Acciones
-  crearSolicitud: (datos: NuevaSolicitud) => { ok: true } | { ok: false; error: string }
-  resolverSolicitud: (id: string, aprobadorId: string, decision: 'aprobada' | 'rechazada', comentario?: string) => void
-  cancelarSolicitud: (id: string) => void
-  crearAjuste: (ajuste: Omit<AjusteSaldo, 'id'>) => void
-  guardarEmpleado: (empleado: Empleado) => void
-  guardarTipoAusencia: (tipo: TipoAusencia) => void
-  agregarFeriado: (feriado: Omit<Feriado, 'id'>, actorId: string) => { ok: true } | { ok: false; error: string }
-  eliminarFeriado: (id: string, actorId: string) => void
-  marcarLeidas: (paraId: string) => void
-  restablecer: () => void
+  // Autenticación
+  entrarConCorreo: (email: string) => Promise<Resultado>
+  cerrarSesion: () => Promise<void>
+  // Acciones (todas contra Supabase; refrescan los datos al terminar)
+  recargar: () => Promise<void>
+  crearSolicitud: (datos: NuevaSolicitud) => Promise<Resultado>
+  resolverSolicitud: (id: string, decision: 'aprobada' | 'rechazada', comentario?: string) => Promise<Resultado>
+  cancelarSolicitud: (id: string) => Promise<Resultado>
+  crearAjuste: (ajuste: Omit<AjusteSaldo, 'id' | 'actorId' | 'fecha'>) => Promise<Resultado>
+  guardarEmpleado: (empleado: Empleado, esNuevo: boolean) => Promise<Resultado>
+  guardarTipoAusencia: (tipo: TipoAusencia, esNuevo: boolean) => Promise<Resultado>
+  agregarFeriado: (feriado: Omit<Feriado, 'id'>) => Promise<Resultado>
+  eliminarFeriado: (id: string) => Promise<Resultado>
+  agregarCompensacion: (registro: Omit<Compensacion, 'id'>) => Promise<Resultado>
+  marcarLeidas: () => Promise<void>
 }
 
 const StoreContext = createContext<StoreValor | null>(null)
 
+function mensajeDeError(error: unknown): string {
+  if (error && typeof error === 'object' && 'message' in error) return String(error.message)
+  return 'Error inesperado. Intenta de nuevo.'
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [datos, setDatos] = useState<DatosApp>(cargar)
+  const [sesion, setSesion] = useState<EstadoSesion>({ fase: 'cargando' })
+  const [datos, setDatos] = useState<DatosApp>(DATOS_VACIOS)
+  const [cargandoDatos, setCargandoDatos] = useState(false)
   const hoy = formatearISO(new Date())
+  const empleadoActualRef = useRef<Empleado | null>(null)
+
+  const cargarDatos = useCallback(async () => {
+    setCargandoDatos(true)
+    try {
+      // RLS recorta cada consulta a lo que el usuario puede ver.
+      const [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, compensaciones, auditoria, notificaciones] =
+        await Promise.all([
+          supabase.from('paises').select('*').order('nombre'),
+          supabase.from('tipos_ausencia').select('*').order('nombre'),
+          supabase.from('politicas_ausencia').select('*'),
+          supabase.from('feriados').select('*').order('fecha'),
+          supabase.from('empleados').select('*').order('nombre'),
+          supabase.from('solicitudes').select('*').order('creada_en', { ascending: false }),
+          supabase.from('ajustes_saldo').select('*'),
+          supabase.from('compensaciones').select('*').order('fecha_efectiva', { ascending: false }),
+          supabase.from('auditoria').select('*').order('timestamp', { ascending: false }).limit(500),
+          supabase.from('notificaciones').select('*').order('timestamp', { ascending: false }).limit(100),
+        ])
+      const primerError = [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, compensaciones, auditoria, notificaciones]
+        .map((r) => r.error)
+        .find(Boolean)
+      if (primerError) throw primerError
+
+      setDatos({
+        paises: (paises.data ?? []).map(filas.aPais),
+        tiposAusencia: (tipos.data ?? []).map(filas.aTipoAusencia),
+        politicas: (politicas.data ?? []).map(filas.aPolitica),
+        feriados: (feriados.data ?? []).map(filas.aFeriado),
+        empleados: (empleados.data ?? []).map(filas.aEmpleado),
+        solicitudes: (solicitudes.data ?? []).map(filas.aSolicitud),
+        ajustes: (ajustes.data ?? []).map(filas.aAjuste),
+        compensaciones: (compensaciones.data ?? []).map(filas.aCompensacion),
+        auditoria: (auditoria.data ?? []).map(filas.aAuditoria),
+        notificaciones: (notificaciones.data ?? []).map(filas.aNotificacion),
+      })
+    } finally {
+      setCargandoDatos(false)
+    }
+  }, [])
+
+  // Resuelve la sesión: vincula el usuario de Auth con su fila de empleados
+  // (por correo, la primera vez) y carga los datos visibles.
+  const resolverSesion = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      empleadoActualRef.current = null
+      setSesion({ fase: 'anonimo' })
+      setDatos(DATOS_VACIOS)
+      return
+    }
+    const { data, error } = await supabase.rpc('vincular_mi_usuario')
+    const fila = Array.isArray(data) ? data[0] : data
+    if (error || !fila) {
+      empleadoActualRef.current = null
+      setSesion({ fase: 'sin_registro', email: session.user.email ?? '' })
+      setDatos(DATOS_VACIOS)
+      return
+    }
+    const empleado = filas.aEmpleado(fila)
+    empleadoActualRef.current = empleado
+    // Cargar los datos ANTES de activar la sesión: las vistas asumen que los
+    // catálogos (países, tipos) ya existen cuando se montan.
+    await cargarDatos()
+    setSesion({ fase: 'activa', empleado })
+  }, [cargarDatos])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CLAVE_STORAGE, JSON.stringify(datos))
-    } catch {
-      // Entorno sin almacenamiento (p. ej. demo compartida): la sesión vive en memoria.
-    }
-  }, [datos])
+    void resolverSesion()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((evento) => {
+      if (evento === 'SIGNED_IN' || evento === 'SIGNED_OUT') {
+        // setTimeout evita el deadlock documentado de supabase-js: no se debe
+        // llamar al cliente dentro del propio callback de auth.
+        setTimeout(() => void resolverSesion(), 0)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [resolverSesion])
+
+  // Notificaciones en tiempo real: al recibir una, refresca los datos.
+  useEffect(() => {
+    if (sesion.fase !== 'activa') return
+    const canal = supabase
+      .channel('notificaciones-propias')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notificaciones', filter: `para_id=eq.${sesion.empleado.id}` },
+        () => void cargarDatos(),
+      )
+      .subscribe()
+    return () => void supabase.removeChannel(canal)
+  }, [sesion, cargarDatos])
 
   const valor = useMemo<StoreValor>(() => {
     const paisDe = (empleado: Empleado): Pais =>
@@ -117,15 +195,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const politicaDe = (empleado: Empleado, tipoAusenciaId: string) =>
       datos.politicas.find((p) => p.pais === empleado.pais && p.tipoAusenciaId === tipoAusenciaId)
 
-    const aprobadorDe = (empleado: Empleado): Empleado => {
+    const aprobadorDe = (empleado: Empleado): Empleado | undefined => {
       const jefe = empleado.managerId
         ? datos.empleados.find((e) => e.id === empleado.managerId && e.activo)
         : undefined
-      return (
-        jefe ??
-        datos.empleados.find((e) => e.id === seed.ADMIN_DESIGNADO_ID) ??
-        datos.empleados.find((e) => e.rol === 'admin' && e.activo)!
-      )
+      return jefe ?? datos.empleados.find((e) => e.rol === 'admin' && e.activo)
     }
 
     const saldoDe = (empleado: Empleado, tipoAusenciaId: string) => {
@@ -141,35 +215,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       datos.solicitudes.filter((s) => {
         if (s.estado !== 'pendiente') return false
         const solicitante = datos.empleados.find((e) => e.id === s.empleadoId)
-        return solicitante ? aprobadorDe(solicitante).id === aprobadorId : false
+        return solicitante ? aprobadorDe(solicitante)?.id === aprobadorId : false
       })
 
-    const auditar = (actorId: string, accion: string, entidad: string, entidadId: string, detalle: string): RegistroAuditoria => ({
-      id: nuevoId('aud'), actorId, accion, entidad, entidadId, detalle,
-      timestamp: new Date().toISOString(),
-    })
+    const yo = () => empleadoActualRef.current
 
-    const notificarYEnviar = (
-      previo: DatosApp, para: Empleado, mensaje: string, asunto: string, solicitudId?: string,
-    ): Pick<DatosApp, 'notificaciones' | 'correos'> => ({
-      // Canal doble confirmado por Tomás: dentro de la app + correo.
-      notificaciones: [
-        { id: nuevoId('not'), paraId: para.id, mensaje, leida: false, timestamp: new Date().toISOString(), solicitudId },
-        ...previo.notificaciones,
-      ],
-      correos: [
-        { id: nuevoId('mail'), para: para.email, asunto, cuerpo: mensaje, timestamp: new Date().toISOString() },
-        ...previo.correos,
-      ],
-    })
+    const auditar = async (accion: string, entidad: string, entidadId: string, detalle: string) => {
+      const actor = yo()
+      if (!actor) return
+      await supabase.from('auditoria').insert({
+        actor_id: actor.id, accion, entidad, entidad_id: entidadId, detalle,
+      })
+    }
 
-    const crearSolicitud = (entrada: NuevaSolicitud): { ok: true } | { ok: false; error: string } => {
-      const empleado = datos.empleados.find((e) => e.id === entrada.empleadoId)
-      if (!empleado) return { ok: false, error: 'Empleado no encontrado.' }
+    const notificar = async (paraId: string, mensaje: string, solicitudId?: string) => {
+      await supabase.from('notificaciones').insert({
+        para_id: paraId, mensaje, solicitud_id: solicitudId ?? null,
+      })
+    }
+
+    const entrarConCorreo = async (email: string): Promise<Resultado> => {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      })
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      return { ok: true }
+    }
+
+    const cerrarSesion = async () => {
+      await supabase.auth.signOut()
+    }
+
+    const crearSolicitud = async (entrada: NuevaSolicitud): Promise<Resultado> => {
+      const empleado = yo()
+      if (!empleado || empleado.id !== entrada.empleadoId)
+        return { ok: false, error: 'Solo puedes crear solicitudes propias.' }
       const tipo = datos.tiposAusencia.find((t) => t.id === entrada.tipoAusenciaId)
       if (!tipo) return { ok: false, error: 'Tipo de ausencia no encontrado.' }
       if (parseFecha(entrada.fechaFin) < parseFecha(entrada.fechaInicio))
-        return { ok: false, error: 'La fecha de fin no puede ser anterior a la de inicio.' }
+        return { ok: false, error: 'El rango de fechas es inválido.' }
 
       const pais = paisDe(empleado)
       const medioDias = contarMedioDias(entrada, pais, datos.feriados)
@@ -178,7 +263,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (tipo.requiereAdjunto && !entrada.adjuntoNombre)
         return { ok: false, error: `${tipo.nombre} requiere un documento adjunto (ej. certificado).` }
 
-      // Validación automática de saldo (paso 2 del flujo fijo).
       if (tipo.descuentaSaldo) {
         const saldo = saldoDe(empleado, tipo.id)
         if (saldo && medioDias > saldo.disponibleMedios - saldo.pendienteMedios) {
@@ -191,168 +275,225 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       if (tipo.topeAnualDias != null) {
         const usadoAnio = datos.solicitudes
-          .filter((s) => s.empleadoId === empleado.id && s.tipoAusenciaId === tipo.id && s.estado !== 'rechazada' && s.estado !== 'cancelada' && s.fechaInicio.startsWith(hoy.slice(0, 4)))
+          .filter((s) => s.empleadoId === empleado.id && s.tipoAusenciaId === tipo.id
+            && s.estado !== 'rechazada' && s.estado !== 'cancelada'
+            && s.fechaInicio.startsWith(hoy.slice(0, 4)))
           .reduce((t, s) => t + s.medioDias, 0)
         if (usadoAnio + medioDias > tipo.topeAnualDias * 2)
           return { ok: false, error: `Supera el tope anual de ${tipo.topeAnualDias} días para ${tipo.nombre}.` }
       }
 
-      const aprobador = aprobadorDe(empleado)
-      const solicitud: SolicitudAusencia = {
-        id: nuevoId('sol'),
-        empleadoId: empleado.id,
-        tipoAusenciaId: tipo.id,
-        fechaInicio: entrada.fechaInicio,
-        fechaFin: entrada.fechaFin,
-        fraccionInicio: entrada.fraccionInicio,
-        fraccionFin: entrada.fraccionFin,
-        medioDias,
-        estado: 'pendiente',
-        comentarioEmpleado: entrada.comentario || undefined,
-        adjuntoNombre: entrada.adjuntoNombre,
-        creadaEn: new Date().toISOString(),
-      }
+      const { data: creada, error } = await supabase
+        .from('solicitudes')
+        .insert({
+          empleado_id: empleado.id,
+          tipo_ausencia_id: tipo.id,
+          fecha_inicio: entrada.fechaInicio,
+          fecha_fin: entrada.fechaFin,
+          fraccion_inicio: entrada.fraccionInicio,
+          fraccion_fin: entrada.fraccionFin,
+          medio_dias: medioDias,
+          comentario_empleado: entrada.comentario ?? null,
+          adjunto_url: entrada.adjuntoNombre ?? null,
+        })
+        .select()
+        .single()
+      if (error) return { ok: false, error: mensajeDeError(error) }
 
-      const reintegro = reintegroDe(solicitud)
+      const aprobador = aprobadorDe(empleado)
+      const reintegro = reintegroDe({ fechaFin: entrada.fechaFin, fraccionFin: entrada.fraccionFin })
       const mensaje = `${empleado.nombre} solicitó ${tipo.nombre} desde el ${formatearCorto(entrada.fechaInicio)}, reintegro el ${formatearCorto(reintegro.fecha)}${reintegro.mediodia ? ' al mediodía' : ''} (${formatearDias(medioDias)}).`
-      setDatos((prev) => ({
-        ...prev,
-        solicitudes: [solicitud, ...prev.solicitudes],
-        ...notificarYEnviar(prev, aprobador, mensaje, `Nueva solicitud de ausencia — ${empleado.nombre}`, solicitud.id),
-        auditoria: [auditar(empleado.id, 'creó', 'solicitud', solicitud.id, mensaje), ...prev.auditoria],
-      }))
+      if (aprobador && aprobador.id !== empleado.id) await notificar(aprobador.id, mensaje, creada.id)
+      await auditar('creó', 'solicitud', creada.id, mensaje)
+      await cargarDatos()
       return { ok: true }
     }
 
-    const resolverSolicitud = (id: string, aprobadorId: string, decision: 'aprobada' | 'rechazada', comentario?: string) => {
+    const resolverSolicitud = async (id: string, decision: 'aprobada' | 'rechazada', comentario?: string): Promise<Resultado> => {
+      const actor = yo()
       const solicitud = datos.solicitudes.find((s) => s.id === id)
-      if (!solicitud || solicitud.estado !== 'pendiente') return
+      if (!actor || !solicitud || solicitud.estado !== 'pendiente')
+        return { ok: false, error: 'La solicitud ya fue resuelta.' }
       const empleado = datos.empleados.find((e) => e.id === solicitud.empleadoId)
-      const aprobador = datos.empleados.find((e) => e.id === aprobadorId)
       const tipo = datos.tiposAusencia.find((t) => t.id === solicitud.tipoAusenciaId)
-      if (!empleado || !aprobador || !tipo) return
-      const politica = politicaDe(empleado, tipo.id)
+      if (!empleado || !tipo) return { ok: false, error: 'Datos incompletos.' }
 
+      const { error } = await supabase
+        .from('solicitudes')
+        .update({
+          estado: decision,
+          aprobador_id: actor.id,
+          comentario_aprobador: comentario ?? null,
+          resuelta_en: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('estado', 'pendiente')
+      if (error) return { ok: false, error: mensajeDeError(error) }
+
+      const politica = politicaDe(empleado, tipo.id)
       const verbo = decision === 'aprobada' ? 'aprobó' : 'rechazó'
       const reintegro = reintegroDe(solicitud)
-      const mensaje = `${aprobador.nombre} ${verbo} tu solicitud de ${tipo.nombre} (desde el ${formatearCorto(solicitud.fechaInicio)}, reintegro el ${formatearCorto(reintegro.fecha)}).${comentario ? ` Comentario: "${comentario}"` : ''}`
-
-      setDatos((prev) => ({
-        ...prev,
-        solicitudes: prev.solicitudes.map((s) =>
-          s.id === id
-            ? { ...s, estado: decision, aprobadorId, comentarioAprobador: comentario || undefined, resueltaEn: new Date().toISOString() }
-            : s,
-        ),
-        ...notificarYEnviar(prev, empleado, mensaje, `Tu solicitud fue ${decision} — ${tipo.nombre}`, id),
-        // Sello inmutable: quién, cuándo y bajo qué política (sección 7.1).
-        auditoria: [
-          auditar(aprobadorId, verbo, 'solicitud', id,
-            `${tipo.nombre} de ${empleado.nombre} (${formatearDias(solicitud.medioDias)}) — política ${politica?.nombre ?? 'n/a'}`),
-          ...prev.auditoria,
-        ],
-      }))
-    }
-
-    const cancelarSolicitud = (id: string) => {
-      const solicitud = datos.solicitudes.find((s) => s.id === id)
-      if (!solicitud || solicitud.estado !== 'pendiente') return
-      setDatos((prev) => ({
-        ...prev,
-        solicitudes: prev.solicitudes.map((s) => (s.id === id ? { ...s, estado: 'cancelada' as const } : s)),
-        auditoria: [auditar(solicitud.empleadoId, 'canceló', 'solicitud', id, 'Cancelada por el solicitante antes de resolverse'), ...prev.auditoria],
-      }))
-    }
-
-    const crearAjuste = (ajuste: Omit<AjusteSaldo, 'id'>) => {
-      const empleado = datos.empleados.find((e) => e.id === ajuste.empleadoId)
-      const completo: AjusteSaldo = { ...ajuste, id: nuevoId('aj') }
-      setDatos((prev) => ({
-        ...prev,
-        ajustes: [completo, ...prev.ajustes],
-        auditoria: [
-          auditar(ajuste.actorId, 'ajustó saldo', 'ajuste', completo.id,
-            `${ajuste.medioDias > 0 ? '+' : ''}${formatearDias(Math.abs(ajuste.medioDias))} a ${empleado?.nombre ?? ajuste.empleadoId} — ${ajuste.motivo}`),
-          ...prev.auditoria,
-        ],
-      }))
-    }
-
-    const guardarEmpleado = (empleado: Empleado) => {
-      setDatos((prev) => {
-        const existe = prev.empleados.some((e) => e.id === empleado.id)
-        return {
-          ...prev,
-          empleados: existe
-            ? prev.empleados.map((e) => (e.id === empleado.id ? empleado : e))
-            : [...prev.empleados, empleado],
-        }
-      })
-    }
-
-    const guardarTipoAusencia = (tipo: TipoAusencia) => {
-      setDatos((prev) => {
-        const existe = prev.tiposAusencia.some((t) => t.id === tipo.id)
-        return {
-          ...prev,
-          tiposAusencia: existe
-            ? prev.tiposAusencia.map((t) => (t.id === tipo.id ? tipo : t))
-            : [...prev.tiposAusencia, tipo],
-        }
-      })
-    }
-
-    const agregarFeriado = (feriado: Omit<Feriado, 'id'>, actorId: string): { ok: true } | { ok: false; error: string } => {
-      if (!feriado.fecha) return { ok: false, error: 'Indica la fecha del feriado.' }
-      if (!feriado.descripcion.trim()) return { ok: false, error: 'Indica el nombre del feriado.' }
-      const duplicado = datos.feriados.some((f) => f.pais === feriado.pais && f.fecha === feriado.fecha)
-      if (duplicado) return { ok: false, error: 'Ya existe un feriado en esa fecha para este país.' }
-
-      const completo: Feriado = { ...feriado, descripcion: feriado.descripcion.trim(), id: nuevoId('fer') }
-      const pais = datos.paises.find((p) => p.codigo === feriado.pais)
-      setDatos((prev) => ({
-        ...prev,
-        feriados: [...prev.feriados, completo],
-        auditoria: [
-          auditar(actorId, 'agregó feriado', 'feriado', completo.id,
-            `${pais?.nombre ?? feriado.pais}: ${formatearCorto(feriado.fecha)} — ${completo.descripcion}`),
-          ...prev.auditoria,
-        ],
-      }))
+      await notificar(
+        empleado.id,
+        `${actor.nombre} ${verbo} tu solicitud de ${tipo.nombre} (desde el ${formatearCorto(solicitud.fechaInicio)}, reintegro el ${formatearCorto(reintegro.fecha)}).${comentario ? ` Comentario: "${comentario}"` : ''}`,
+        id,
+      )
+      // Sello inmutable: quién, cuándo y bajo qué política (sección 7.1).
+      await auditar(verbo, 'solicitud', id,
+        `${tipo.nombre} de ${empleado.nombre} (${formatearDias(solicitud.medioDias)}) — política ${politica?.nombre ?? 'n/a'}`)
+      await cargarDatos()
       return { ok: true }
     }
 
-    const eliminarFeriado = (id: string, actorId: string) => {
-      const feriado = datos.feriados.find((f) => f.id === id)
-      if (!feriado) return
+    const cancelarSolicitud = async (id: string): Promise<Resultado> => {
+      const solicitud = datos.solicitudes.find((s) => s.id === id)
+      if (!solicitud || solicitud.estado !== 'pendiente')
+        return { ok: false, error: 'Solo se cancelan solicitudes pendientes.' }
+      const { error } = await supabase
+        .from('solicitudes')
+        .update({ estado: 'cancelada' })
+        .eq('id', id)
+        .eq('estado', 'pendiente')
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      await auditar('canceló', 'solicitud', id, 'Cancelada por el solicitante antes de resolverse')
+      await cargarDatos()
+      return { ok: true }
+    }
+
+    const crearAjuste = async (ajuste: Omit<AjusteSaldo, 'id' | 'actorId' | 'fecha'>): Promise<Resultado> => {
+      const actor = yo()
+      if (!actor) return { ok: false, error: 'Sesión no válida.' }
+      const empleado = datos.empleados.find((e) => e.id === ajuste.empleadoId)
+      const { data: creado, error } = await supabase
+        .from('ajustes_saldo')
+        .insert({
+          empleado_id: ajuste.empleadoId,
+          tipo_ausencia_id: ajuste.tipoAusenciaId,
+          medio_dias: ajuste.medioDias,
+          motivo: ajuste.motivo,
+          fecha: hoy,
+          actor_id: actor.id,
+        })
+        .select()
+        .single()
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      await auditar('ajustó saldo', 'ajuste', creado.id,
+        `${ajuste.medioDias > 0 ? '+' : ''}${formatearDias(Math.abs(ajuste.medioDias))} a ${empleado?.nombre ?? ajuste.empleadoId} — ${ajuste.motivo}`)
+      await cargarDatos()
+      return { ok: true }
+    }
+
+    const guardarEmpleado = async (empleado: Empleado, esNuevo: boolean): Promise<Resultado> => {
+      const fila = {
+        nombre: empleado.nombre,
+        email: empleado.email.trim().toLowerCase(),
+        pais: empleado.pais,
+        puesto: empleado.puesto,
+        fecha_ingreso: empleado.fechaIngreso,
+        manager_id: empleado.managerId,
+        rol: empleado.rol,
+        activo: empleado.activo,
+        avatar_color: empleado.avatarColor,
+      }
+      const consulta = esNuevo
+        ? supabase.from('empleados').insert(fila).select().single()
+        : supabase.from('empleados').update(fila).eq('id', empleado.id).select().single()
+      const { data: guardado, error } = await consulta
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      await auditar(esNuevo ? 'creó empleado' : 'editó empleado', 'empleado', guardado.id,
+        `${empleado.nombre} (${empleado.email}) — rol ${empleado.rol}${empleado.activo ? '' : ', inactivo'}`)
+      await cargarDatos()
+      return { ok: true }
+    }
+
+    const guardarTipoAusencia = async (tipo: TipoAusencia, esNuevo: boolean): Promise<Resultado> => {
+      const fila = {
+        id: tipo.id,
+        nombre: tipo.nombre,
+        descuenta_saldo: tipo.descuentaSaldo,
+        afecta_nomina: tipo.afectaNomina,
+        requiere_adjunto: tipo.requiereAdjunto,
+        tope_anual_dias: tipo.topeAnualDias ?? null,
+        color: tipo.color,
+        icono: tipo.icono,
+      }
+      const consulta = esNuevo
+        ? supabase.from('tipos_ausencia').insert(fila)
+        : supabase.from('tipos_ausencia').update(fila).eq('id', tipo.id)
+      const { error } = await consulta
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      await auditar(esNuevo ? 'creó tipo' : 'editó tipo', 'tipo_ausencia', tipo.id, tipo.nombre)
+      await cargarDatos()
+      return { ok: true }
+    }
+
+    const agregarFeriado = async (feriado: Omit<Feriado, 'id'>): Promise<Resultado> => {
+      if (!feriado.fecha) return { ok: false, error: 'Indica la fecha del feriado.' }
+      if (!feriado.descripcion.trim()) return { ok: false, error: 'Indica el nombre del feriado.' }
+      const { data: creado, error } = await supabase
+        .from('feriados')
+        .insert({ pais: feriado.pais, fecha: feriado.fecha, descripcion: feriado.descripcion.trim() })
+        .select()
+        .single()
+      if (error) {
+        if (error.code === '23505') return { ok: false, error: 'Ya existe un feriado en esa fecha para este país.' }
+        return { ok: false, error: mensajeDeError(error) }
+      }
       const pais = datos.paises.find((p) => p.codigo === feriado.pais)
-      setDatos((prev) => ({
-        ...prev,
-        feriados: prev.feriados.filter((f) => f.id !== id),
-        auditoria: [
-          auditar(actorId, 'eliminó feriado', 'feriado', id,
-            `${pais?.nombre ?? feriado.pais}: ${formatearCorto(feriado.fecha)} — ${feriado.descripcion}`),
-          ...prev.auditoria,
-        ],
-      }))
+      await auditar('agregó feriado', 'feriado', creado.id,
+        `${pais?.nombre ?? feriado.pais}: ${formatearCorto(feriado.fecha)} — ${feriado.descripcion.trim()}`)
+      await cargarDatos()
+      return { ok: true }
     }
 
-    const marcarLeidas = (paraId: string) => {
-      setDatos((prev) => ({
-        ...prev,
-        notificaciones: prev.notificaciones.map((n) => (n.paraId === paraId ? { ...n, leida: true } : n)),
-      }))
+    const eliminarFeriado = async (id: string): Promise<Resultado> => {
+      const feriado = datos.feriados.find((f) => f.id === id)
+      if (!feriado) return { ok: false, error: 'Feriado no encontrado.' }
+      const { error } = await supabase.from('feriados').delete().eq('id', id)
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      const pais = datos.paises.find((p) => p.codigo === feriado.pais)
+      await auditar('eliminó feriado', 'feriado', id,
+        `${pais?.nombre ?? feriado.pais}: ${formatearCorto(feriado.fecha)} — ${feriado.descripcion}`)
+      await cargarDatos()
+      return { ok: true }
     }
 
-    const restablecer = () => setDatos(datosIniciales())
+    const agregarCompensacion = async (registro: Omit<Compensacion, 'id'>): Promise<Resultado> => {
+      const empleado = datos.empleados.find((e) => e.id === registro.empleadoId)
+      const { data: creado, error } = await supabase
+        .from('compensaciones')
+        .insert({
+          empleado_id: registro.empleadoId,
+          fecha_efectiva: registro.fechaEfectiva,
+          moneda: registro.moneda,
+          monto_base: registro.montoBase,
+          motivo: registro.motivo,
+        })
+        .select()
+        .single()
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      await auditar('registró compensación', 'compensacion', creado.id,
+        `${empleado?.nombre ?? registro.empleadoId}: ${registro.moneda} ${registro.montoBase.toLocaleString('es-NI')} efectivo ${formatearCorto(registro.fechaEfectiva)} — ${registro.motivo}`)
+      await cargarDatos()
+      return { ok: true }
+    }
+
+    const marcarLeidas = async () => {
+      const actor = yo()
+      if (!actor) return
+      await supabase.from('notificaciones').update({ leida: true }).eq('para_id', actor.id).eq('leida', false)
+      await cargarDatos()
+    }
 
     return {
-      datos, hoy, paisDe, politicaDe, aprobadorDe, saldoDe, equipoDe, pendientesDe,
+      sesion, datos, hoy, cargandoDatos,
+      paisDe, politicaDe, aprobadorDe, saldoDe, equipoDe, pendientesDe,
+      entrarConCorreo, cerrarSesion, recargar: cargarDatos,
       crearSolicitud, resolverSolicitud, cancelarSolicitud, crearAjuste,
       guardarEmpleado, guardarTipoAusencia, agregarFeriado, eliminarFeriado,
-      marcarLeidas, restablecer,
+      agregarCompensacion, marcarLeidas,
     }
-  }, [datos, hoy])
+  }, [sesion, datos, hoy, cargarDatos])
 
   return <StoreContext.Provider value={valor}>{children}</StoreContext.Provider>
 }
@@ -362,5 +503,3 @@ export function useStore(): StoreValor {
   if (!contexto) throw new Error('useStore debe usarse dentro de <StoreProvider>')
   return contexto
 }
-
-export type { Rol }

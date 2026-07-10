@@ -25,7 +25,7 @@ export function Campana({ personaId }: { personaId: string }) {
   const alternar = () => {
     const siguiente = !abierto
     setAbierto(siguiente)
-    if (siguiente && sinLeer > 0) marcarLeidas(personaId)
+    if (siguiente && sinLeer > 0) void marcarLeidas()
   }
 
   return (

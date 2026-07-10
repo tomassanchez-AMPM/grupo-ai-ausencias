@@ -113,8 +113,16 @@ export interface AjusteSaldo {
   actorId: string
 }
 
-// Nota: el módulo Compensación (sección 6.1 del documento de diseño) está
-// apagado en esta fase; sus entidades se reintroducirán cuando se active.
+/** Salario base versionado: nunca se sobreescribe, se agrega un registro.
+ *  Reactivado para el reporte de provisión contable (solo admin). */
+export interface Compensacion {
+  id: string
+  empleadoId: string
+  fechaEfectiva: string
+  moneda: string
+  montoBase: number
+  motivo: string
+}
 
 export interface RegistroAuditoria {
   id: string
@@ -135,11 +143,3 @@ export interface Notificacion {
   solicitudId?: string
 }
 
-/** Simulación del canal de correo del prototipo (correo + app). */
-export interface CorreoSaliente {
-  id: string
-  para: string
-  asunto: string
-  cuerpo: string
-  timestamp: string
-}

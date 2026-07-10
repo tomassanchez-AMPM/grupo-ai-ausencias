@@ -9,12 +9,23 @@ import type { Empleado, SolicitudAusencia } from '../domain/types'
 import { useStore } from '../state/store'
 import { Avatar, EstadoVacio, textoPeriodo } from './comunes'
 
-function TarjetaAprobacion({ solicitud, aprobadorId }: { solicitud: SolicitudAusencia; aprobadorId: string }) {
+function TarjetaAprobacion({ solicitud }: { solicitud: SolicitudAusencia }) {
   const { datos, resolverSolicitud, saldoDe } = useStore()
   const [comentario, setComentario] = useState('')
+  const [error, setError] = useState('')
+  const [resolviendo, setResolviendo] = useState(false)
   const empleado = datos.empleados.find((e) => e.id === solicitud.empleadoId)
   const tipo = datos.tiposAusencia.find((t) => t.id === solicitud.tipoAusenciaId)
   if (!empleado || !tipo) return null
+
+  const resolver = async (decision: 'aprobada' | 'rechazada') => {
+    if (resolviendo) return
+    setResolviendo(true)
+    setError('')
+    const resultado = await resolverSolicitud(solicitud.id, decision, comentario.trim() || undefined)
+    setResolviendo(false)
+    if (!resultado.ok) setError(resultado.error)
+  }
 
   const saldo = tipo.descuentaSaldo ? saldoDe(empleado, tipo.id) : undefined
   const rango = textoPeriodo(solicitud)
@@ -49,11 +60,12 @@ function TarjetaAprobacion({ solicitud, aprobadorId }: { solicitud: SolicitudAus
               aria-label="Comentario para el empleado"
             />
           </div>
+          {error && <p className="error-inline" style={{ marginBottom: 10 }} role="alert">{error}</p>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="boton-exito" onClick={() => resolverSolicitud(solicitud.id, aprobadorId, 'aprobada', comentario.trim() || undefined)}>
+            <button className="boton-exito" onClick={() => void resolver('aprobada')} disabled={resolviendo}>
               ✓ Aprobar
             </button>
-            <button className="boton-peligro" onClick={() => resolverSolicitud(solicitud.id, aprobadorId, 'rechazada', comentario.trim() || undefined)}>
+            <button className="boton-peligro" onClick={() => void resolver('rechazada')} disabled={resolviendo}>
               ✕ Rechazar
             </button>
           </div>
@@ -187,7 +199,7 @@ export function JefeView({ jefe }: { jefe: Empleado }) {
           <EstadoVacio emoji="✅" mensaje="Todo al día" sugerencia="No hay solicitudes esperando tu decisión." />
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
-            {pendientes.map((s) => <TarjetaAprobacion key={s.id} solicitud={s} aprobadorId={jefe.id} />)}
+            {pendientes.map((s) => <TarjetaAprobacion key={s.id} solicitud={s} />)}
           </div>
         )}
       </section>
@@ -224,7 +236,7 @@ export function JefeView({ jefe }: { jefe: Empleado }) {
                           <Avatar empleado={miembro} /> {miembro.nombre}
                         </span>
                       </td>
-                      <td>{pais.bandera} {pais.nombre}</td>
+                      <td>{pais?.bandera} {pais?.nombre}</td>
                       {tiposConSaldo.map((t) => {
                         const saldo = saldoDe(miembro, t.id)
                         return (

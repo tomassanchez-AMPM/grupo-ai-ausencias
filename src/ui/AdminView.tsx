@@ -1,47 +1,57 @@
-// Consola Admin/RRHH (sección 7): gestión de empleados, configuración de
-// políticas y tipos (Nivel 1 de customización), reportes y auditoría.
-// Las políticas por país se muestran como solo lectura: son Nivel 2 —
-// configuración técnica (sección 6). El módulo Compensación está apagado.
+// Consola Admin/RRHH: gestión de empleados, configuración (Nivel 1),
+// feriados, compensación (solo admin — el jefe no la ve, sección 3.1),
+// reportería con exportación a Excel y auditoría.
 
 import { useMemo, useState } from 'react'
 import { formatearDias } from '../domain/conteoDias'
 import { formatearCorto, formatearLargo, parseFecha } from '../domain/fechas'
 import type { CodigoPais, Empleado, TipoAusencia } from '../domain/types'
+import { exportarExcel } from '../reportes/excel'
 import { useStore } from '../state/store'
 import { Avatar, EstadoVacio, Modal } from './comunes'
+import { CalendarioEquipo } from './JefeView'
 
-type Pestana = 'empleados' | 'politicas' | 'feriados' | 'reportes' | 'auditoria' | 'correos'
+type Pestana = 'empleados' | 'politicas' | 'feriados' | 'compensacion' | 'reportes' | 'auditoria'
 
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'empleados', nombre: '👥 Empleados' },
   { id: 'politicas', nombre: '⚙️ Políticas y tipos' },
   { id: 'feriados', nombre: '🎉 Feriados' },
+  { id: 'compensacion', nombre: '💰 Compensación' },
   { id: 'reportes', nombre: '📊 Reportes' },
   { id: 'auditoria', nombre: '📜 Auditoría' },
-  { id: 'correos', nombre: '✉️ Correos enviados' },
 ]
+
+const AVATARES = ['#5B77D3', '#0E9F6E', '#C27803', '#D93025', '#7E3AF2', '#1D2C75', '#0694A2', '#E74694']
 
 // ---------- Empleados ----------
 
-function ModalEmpleado({ original, adminId, onCerrar }: { original?: Empleado; adminId: string; onCerrar: () => void }) {
+function ModalEmpleado({ original, onCerrar }: { original?: Empleado; onCerrar: () => void }) {
   const { datos, guardarEmpleado } = useStore()
   const [empleado, setEmpleado] = useState<Empleado>(
     original ?? {
-      id: `emp-${Date.now().toString(36)}`,
+      id: '',
       nombre: '', email: '', pais: 'NI', puesto: '',
       fechaIngreso: new Date().toISOString().slice(0, 10),
-      managerId: adminId, rol: 'empleado', activo: true,
-      avatarColor: ['#7c5cff', '#14b8a6', '#f59e0b', '#ec4899', '#60a5fa'][Math.floor(Math.random() * 5)],
+      managerId: null, rol: 'empleado', activo: true,
+      avatarColor: AVATARES[Math.floor(Math.random() * AVATARES.length)],
     },
   )
   const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
-  const guardar = () => {
+  const guardar = async () => {
     if (!empleado.nombre.trim() || !empleado.email.trim()) {
       setError('Nombre y correo son obligatorios.')
       return
     }
-    guardarEmpleado(empleado)
+    setGuardando(true)
+    const resultado = await guardarEmpleado(empleado, !original)
+    setGuardando(false)
+    if (!resultado.ok) {
+      setError(resultado.error)
+      return
+    }
     onCerrar()
   }
 
@@ -55,7 +65,7 @@ function ModalEmpleado({ original, adminId, onCerrar }: { original?: Empleado; a
       </div>
       <div className="fila-campos">
         <div className="campo">
-          <label htmlFor="email">Correo</label>
+          <label htmlFor="email">Correo (con él inicia sesión)</label>
           <input id="email" type="email" value={empleado.email} onChange={(e) => setEmpleado({ ...empleado, email: e.target.value })} />
         </div>
         <div className="campo">
@@ -66,7 +76,7 @@ function ModalEmpleado({ original, adminId, onCerrar }: { original?: Empleado; a
       <div className="fila-campos">
         <div className="campo">
           <label htmlFor="pais">País (define su política)</label>
-          <select id="pais" value={empleado.pais} onChange={(e) => setEmpleado({ ...empleado, pais: e.target.value as Empleado['pais'] })}>
+          <select id="pais" value={empleado.pais} onChange={(e) => setEmpleado({ ...empleado, pais: e.target.value as CodigoPais })}>
             {datos.paises.map((p) => <option key={p.codigo} value={p.codigo}>{p.bandera} {p.nombre}</option>)}
           </select>
         </div>
@@ -105,27 +115,41 @@ function ModalEmpleado({ original, adminId, onCerrar }: { original?: Empleado; a
       {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="boton-secundario" onClick={onCerrar}>Cancelar</button>
-        <button className="boton-primario" onClick={guardar}>Guardar</button>
+        <button className="boton-primario" onClick={() => void guardar()} disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
       </div>
     </Modal>
   )
 }
 
-function ModalAjuste({ empleado, adminId, onCerrar }: { empleado: Empleado; adminId: string; onCerrar: () => void }) {
-  const { datos, crearAjuste, hoy } = useStore()
+function ModalAjuste({ empleado, onCerrar }: { empleado: Empleado; onCerrar: () => void }) {
+  const { datos, crearAjuste } = useStore()
   const tiposConSaldo = datos.tiposAusencia.filter((t) => t.descuentaSaldo)
   const [tipoId, setTipoId] = useState(tiposConSaldo[0]?.id ?? '')
   const [dias, setDias] = useState('1')
   const [motivo, setMotivo] = useState('')
   const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
-  const guardar = () => {
+  const guardar = async () => {
     const numero = Number(dias)
     if (!numero || !motivo.trim()) {
       setError('Indica días (± , admite medios) y un motivo: queda en la auditoría.')
       return
     }
-    crearAjuste({ empleadoId: empleado.id, tipoAusenciaId: tipoId, medioDias: Math.round(numero * 2), motivo: motivo.trim(), fecha: hoy, actorId: adminId })
+    setGuardando(true)
+    const resultado = await crearAjuste({
+      empleadoId: empleado.id,
+      tipoAusenciaId: tipoId,
+      medioDias: Math.round(numero * 2),
+      motivo: motivo.trim(),
+    })
+    setGuardando(false)
+    if (!resultado.ok) {
+      setError(resultado.error)
+      return
+    }
     onCerrar()
   }
 
@@ -150,22 +174,46 @@ function ModalAjuste({ empleado, adminId, onCerrar }: { empleado: Empleado; admi
       {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="boton-secundario" onClick={onCerrar}>Cancelar</button>
-        <button className="boton-primario" onClick={guardar}>Aplicar ajuste</button>
+        <button className="boton-primario" onClick={() => void guardar()} disabled={guardando}>
+          {guardando ? 'Aplicando…' : 'Aplicar ajuste'}
+        </button>
       </div>
     </Modal>
   )
 }
 
-function PestanaEmpleados({ admin }: { admin: Empleado }) {
+function PestanaEmpleados() {
   const { datos, paisDe, aprobadorDe, saldoDe } = useStore()
   const [editando, setEditando] = useState<Empleado | 'nuevo' | null>(null)
   const [ajustando, setAjustando] = useState<Empleado | null>(null)
+
+  const exportarSaldos = () => {
+    void exportarExcel('saldos-vacaciones', [{
+      nombre: 'Saldos',
+      filas: datos.empleados.filter((e) => e.activo).map((e) => {
+        const saldo = saldoDe(e, 'vacaciones')
+        return {
+          Persona: e.nombre,
+          Puesto: e.puesto,
+          País: paisDe(e)?.nombre ?? e.pais,
+          'Ingreso': e.fechaIngreso,
+          'Disponible (días)': saldo ? Math.max(saldo.disponibleMedios, 0) / 2 : null,
+          'Usado en el año (días)': saldo ? saldo.usadoMedios / 2 : null,
+          'En trámite (días)': saldo ? saldo.pendienteMedios / 2 : null,
+          'Arrastre (días)': saldo ? saldo.carryoverMedios / 2 : null,
+        }
+      }),
+    }])
+  }
 
   return (
     <>
       <div className="encabezado-seccion">
         <h2>Empleados ({datos.empleados.filter((e) => e.activo).length} activos)</h2>
-        <button className="boton-primario" onClick={() => setEditando('nuevo')}>+ Nuevo empleado</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="boton-secundario" onClick={exportarSaldos}>⬇ Excel de saldos</button>
+          <button className="boton-primario" onClick={() => setEditando('nuevo')}>+ Nuevo empleado</button>
+        </div>
       </div>
       <div className="contenedor-tabla">
         <table>
@@ -190,9 +238,9 @@ function PestanaEmpleados({ admin }: { admin: Empleado }) {
                       </span>
                     </span>
                   </td>
-                  <td>{pais.bandera} {pais.nombre}</td>
+                  <td>{pais?.bandera} {pais?.nombre}</td>
                   <td><span className={`insignia ${e.rol === 'admin' ? 'primaria' : 'neutra'}`}>{e.rol === 'admin' ? 'Admin/RRHH' : e.rol === 'jefe' ? 'Jefe' : 'Empleado'}</span></td>
-                  <td>{e.managerId ? aprobador.nombre : <span className="meta">{aprobador.nombre} (designado)</span>}</td>
+                  <td>{e.managerId ? aprobador?.nombre : <span className="meta">{aprobador?.nombre} (designado)</span>}</td>
                   <td>{saldo ? <strong>{formatearDias(Math.max(saldo.disponibleMedios, 0))}</strong> : <span className="meta">—</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="boton-fantasma" onClick={() => setEditando(e)}>Editar</button>
@@ -204,10 +252,8 @@ function PestanaEmpleados({ admin }: { admin: Empleado }) {
           </tbody>
         </table>
       </div>
-      {editando && (
-        <ModalEmpleado original={editando === 'nuevo' ? undefined : editando} adminId={admin.id} onCerrar={() => setEditando(null)} />
-      )}
-      {ajustando && <ModalAjuste empleado={ajustando} adminId={admin.id} onCerrar={() => setAjustando(null)} />}
+      {editando && <ModalEmpleado original={editando === 'nuevo' ? undefined : editando} onCerrar={() => setEditando(null)} />}
+      {ajustando && <ModalAjuste empleado={ajustando} onCerrar={() => setAjustando(null)} />}
     </>
   )
 }
@@ -220,14 +266,18 @@ function ModalTipo({ original, onCerrar }: { original?: TipoAusencia; onCerrar: 
     original ?? {
       id: `tipo-${Date.now().toString(36)}`,
       nombre: '', descuentaSaldo: false, afectaNomina: false, requiereAdjunto: false,
-      color: '#60a5fa', icono: '📌',
+      color: '#3F6AD8', icono: '📌',
     },
   )
   const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
-  const guardar = () => {
+  const guardar = async () => {
     if (!tipo.nombre.trim()) { setError('El nombre es obligatorio.'); return }
-    guardarTipoAusencia(tipo)
+    setGuardando(true)
+    const resultado = await guardarTipoAusencia(tipo, !original)
+    setGuardando(false)
+    if (!resultado.ok) { setError(resultado.error); return }
     onCerrar()
   }
 
@@ -272,7 +322,9 @@ function ModalTipo({ original, onCerrar }: { original?: TipoAusencia; onCerrar: 
       {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="boton-secundario" onClick={onCerrar}>Cancelar</button>
-        <button className="boton-primario" onClick={guardar}>Guardar tipo</button>
+        <button className="boton-primario" onClick={() => void guardar()} disabled={guardando}>
+          {guardando ? 'Guardando…' : 'Guardar tipo'}
+        </button>
       </div>
     </Modal>
   )
@@ -340,16 +392,14 @@ function PestanaPoliticas() {
 }
 
 // ---------- Feriados ----------
-// Los feriados cambian cada año: son mantenimiento frecuente, así que se
-// promueven a Nivel 1 (autoservicio del admin). Afectan el conteo de las
-// solicitudes NUEVAS; las ya creadas conservan sus días calculados.
 
-function PestanaFeriados({ admin }: { admin: Empleado }) {
+function PestanaFeriados() {
   const { datos, hoy, agregarFeriado, eliminarFeriado } = useStore()
   const [paisActivo, setPaisActivo] = useState<CodigoPais>('NI')
   const [fecha, setFecha] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
   const anioActual = parseFecha(hoy).getFullYear()
   const feriadosDelPais = datos.feriados
@@ -357,9 +407,11 @@ function PestanaFeriados({ admin }: { admin: Empleado }) {
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
   const pais = datos.paises.find((p) => p.codigo === paisActivo)
 
-  const agregar = () => {
+  const agregar = async () => {
     setError('')
-    const resultado = agregarFeriado({ pais: paisActivo, fecha, descripcion }, admin.id)
+    setGuardando(true)
+    const resultado = await agregarFeriado({ pais: paisActivo, fecha, descripcion })
+    setGuardando(false)
     if (!resultado.ok) {
       setError(resultado.error)
       return
@@ -408,8 +460,8 @@ function PestanaFeriados({ admin }: { admin: Empleado }) {
           </div>
         </div>
         {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
-        <button className="boton-primario" onClick={agregar} disabled={!fecha || !descripcion.trim()}>
-          + Agregar feriado
+        <button className="boton-primario" onClick={() => void agregar()} disabled={!fecha || !descripcion.trim() || guardando}>
+          {guardando ? 'Agregando…' : '+ Agregar feriado'}
         </button>
       </div>
 
@@ -437,7 +489,7 @@ function PestanaFeriados({ admin }: { admin: Empleado }) {
                     </td>
                     <td>{f.descripcion}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <button className="boton-fantasma" onClick={() => eliminarFeriado(f.id, admin.id)}>
+                      <button className="boton-fantasma" onClick={() => void eliminarFeriado(f.id)}>
                         Eliminar
                       </button>
                     </td>
@@ -452,9 +504,137 @@ function PestanaFeriados({ admin }: { admin: Empleado }) {
   )
 }
 
+// ---------- Compensación (solo admin; alimenta la provisión contable) ----------
+
+function PestanaCompensacion() {
+  const { datos, agregarCompensacion } = useStore()
+  const [seleccionId, setSeleccionId] = useState('')
+  const [modalAbierto, setModalAbierto] = useState(false)
+  const [registro, setRegistro] = useState({
+    fechaEfectiva: new Date().toISOString().slice(0, 10),
+    moneda: 'USD', montoBase: '', motivo: '',
+  })
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const activos = datos.empleados.filter((e) => e.activo)
+  const empleado = datos.empleados.find((e) => e.id === seleccionId) ?? activos[0]
+  const historial = empleado
+    ? datos.compensaciones
+        .filter((c) => c.empleadoId === empleado.id)
+        .sort((a, b) => b.fechaEfectiva.localeCompare(a.fechaEfectiva))
+    : []
+
+  const registrar = async () => {
+    if (!empleado) return
+    setError('')
+    setGuardando(true)
+    const resultado = await agregarCompensacion({
+      empleadoId: empleado.id,
+      fechaEfectiva: registro.fechaEfectiva,
+      moneda: registro.moneda,
+      montoBase: Number(registro.montoBase),
+      motivo: registro.motivo.trim(),
+    })
+    setGuardando(false)
+    if (!resultado.ok) { setError(resultado.error); return }
+    setModalAbierto(false)
+    setRegistro({ ...registro, montoBase: '', motivo: '' })
+  }
+
+  return (
+    <>
+      <p className="nota-info" style={{ marginBottom: 16 }}>
+        🔒 Visible solo para Administración/RRHH; los jefes no tienen acceso (regla a nivel de base de datos).
+        El historial nunca se sobreescribe: cada cambio agrega un registro. El salario base vigente alimenta
+        el reporte de provisión contable de vacaciones.
+      </p>
+      <div className="campo" style={{ maxWidth: 360 }}>
+        <label htmlFor="comp-emp">Persona</label>
+        <select id="comp-emp" value={empleado?.id ?? ''} onChange={(e) => setSeleccionId(e.target.value)}>
+          {activos.map((e) => <option key={e.id} value={e.id}>{e.nombre} — {e.puesto}</option>)}
+        </select>
+      </div>
+
+      {empleado && (
+        <>
+          <div className="encabezado-seccion" style={{ marginTop: 20 }}>
+            <h2>Historial de salario base</h2>
+            <button className="boton-primario" onClick={() => setModalAbierto(true)}>+ Registrar cambio</button>
+          </div>
+          {historial.length === 0 ? (
+            <EstadoVacio emoji="💼" mensaje="Sin registros de compensación" sugerencia="Registra el salario base para incluir a esta persona en la provisión contable." />
+          ) : (
+            <div className="contenedor-tabla">
+              <table>
+                <thead><tr><th>Vigente desde</th><th>Salario base mensual</th><th>Motivo</th></tr></thead>
+                <tbody>
+                  {historial.map((c, i) => (
+                    <tr key={c.id}>
+                      <td>{formatearLargo(c.fechaEfectiva)} {i === 0 && <span className="insignia aprobada" style={{ marginLeft: 6 }}>vigente</span>}</td>
+                      <td><strong>{c.moneda} {c.montoBase.toLocaleString('es-NI')}</strong></td>
+                      <td>{c.motivo}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {modalAbierto && empleado && (
+        <Modal titulo={`Registrar cambio — ${empleado.nombre}`} onCerrar={() => setModalAbierto(false)}>
+          <div className="fila-campos">
+            <div className="campo">
+              <label htmlFor="reg-fecha">Vigente desde</label>
+              <input id="reg-fecha" type="date" value={registro.fechaEfectiva} onChange={(e) => setRegistro({ ...registro, fechaEfectiva: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor="reg-moneda">Moneda</label>
+              <select id="reg-moneda" value={registro.moneda} onChange={(e) => setRegistro({ ...registro, moneda: e.target.value })}>
+                {['USD', 'NIO', 'HNL', 'PAB'].map((m) => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="fila-campos">
+            <div className="campo">
+              <label htmlFor="reg-monto">Salario base mensual</label>
+              <input id="reg-monto" type="number" min={0} value={registro.montoBase} onChange={(e) => setRegistro({ ...registro, montoBase: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor="reg-motivo">Motivo</label>
+              <input id="reg-motivo" value={registro.motivo} onChange={(e) => setRegistro({ ...registro, motivo: e.target.value })} placeholder="Ajuste anual, promoción…" />
+            </div>
+          </div>
+          {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button className="boton-secundario" onClick={() => setModalAbierto(false)}>Cancelar</button>
+            <button
+              className="boton-primario"
+              disabled={!registro.montoBase || !registro.motivo.trim() || guardando}
+              onClick={() => void registrar()}
+            >
+              {guardando ? 'Registrando…' : 'Registrar'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
+
 // ---------- Reportes ----------
 
-function PestanaReportes() {
+type SubReporte = 'resumen' | 'ausentismo' | 'provision' | 'calendario'
+
+function mesAnterior(mes: string): string {
+  const [anio, numero] = mes.split('-').map(Number)
+  const fecha = new Date(anio, numero - 2, 1)
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`
+}
+
+function ReporteResumen() {
   const { datos, hoy, paisDe } = useStore()
   const anio = hoy.slice(0, 4)
 
@@ -470,7 +650,7 @@ function PestanaReportes() {
       const empleado = datos.empleados.find((e) => e.id === s.empleadoId)
       if (empleado) {
         const pais = paisDe(empleado)
-        porPais.set(pais.nombre, (porPais.get(pais.nombre) ?? 0) + s.medioDias)
+        if (pais) porPais.set(pais.nombre, (porPais.get(pais.nombre) ?? 0) + s.medioDias)
       }
       const tipo = datos.tiposAusencia.find((t) => t.id === s.tipoAusenciaId)
       if (tipo) porTipo.set(tipo.nombre, (porTipo.get(tipo.nombre) ?? 0) + s.medioDias)
@@ -480,6 +660,30 @@ function PestanaReportes() {
 
   const maxPais = Math.max(...[...resumen.porPais.values()], 1)
   const maxTipo = Math.max(...[...resumen.porTipo.values()], 1)
+
+  const exportarSolicitudes = () => {
+    void exportarExcel('solicitudes', [{
+      nombre: 'Solicitudes',
+      filas: datos.solicitudes.map((s) => {
+        const empleado = datos.empleados.find((e) => e.id === s.empleadoId)
+        const tipo = datos.tiposAusencia.find((t) => t.id === s.tipoAusenciaId)
+        const aprobador = datos.empleados.find((e) => e.id === s.aprobadorId)
+        return {
+          Persona: empleado?.nombre ?? s.empleadoId,
+          País: empleado ? paisDe(empleado)?.nombre : '',
+          Tipo: tipo?.nombre ?? s.tipoAusenciaId,
+          Desde: s.fechaInicio,
+          Hasta: s.fechaFin,
+          'Días': s.medioDias / 2,
+          Estado: s.estado,
+          Aprobador: aprobador?.nombre ?? '',
+          'Creada': s.creadaEn.slice(0, 10),
+          'Comentario empleado': s.comentarioEmpleado ?? '',
+          'Comentario aprobador': s.comentarioAprobador ?? '',
+        }
+      }),
+    }])
+  }
 
   return (
     <>
@@ -541,63 +745,332 @@ function PestanaReportes() {
           })}
         </div>
       )}
+
+      <p style={{ marginTop: 16 }}>
+        <button className="boton-secundario" onClick={exportarSolicitudes}>⬇ Excel de todas las solicitudes</button>
+      </p>
     </>
   )
 }
 
-// ---------- Auditoría y correos ----------
+function ReporteAusentismo() {
+  const { datos, hoy, paisDe } = useStore()
+  const [mes, setMes] = useState(hoy.slice(0, 7))
+
+  const calcular = (mesObjetivo: string) => {
+    const solicitudes = datos.solicitudes.filter(
+      (s) => s.estado === 'aprobada' && s.fechaInicio.startsWith(mesObjetivo),
+    )
+    const porPersona = new Map<string, { medios: number; porTipo: Map<string, number> }>()
+    for (const s of solicitudes) {
+      if (!porPersona.has(s.empleadoId)) porPersona.set(s.empleadoId, { medios: 0, porTipo: new Map() })
+      const registro = porPersona.get(s.empleadoId)!
+      registro.medios += s.medioDias
+      registro.porTipo.set(s.tipoAusenciaId, (registro.porTipo.get(s.tipoAusenciaId) ?? 0) + s.medioDias)
+    }
+    const total = solicitudes.reduce((t, s) => t + s.medioDias, 0)
+    return { porPersona, total }
+  }
+
+  const actual = useMemo(() => calcular(mes), [datos, mes]) // eslint-disable-line react-hooks/exhaustive-deps
+  const anterior = useMemo(() => calcular(mesAnterior(mes)), [datos, mes]) // eslint-disable-line react-hooks/exhaustive-deps
+  const variacion = actual.total - anterior.total
+
+  const exportar = () => {
+    void exportarExcel(`ausentismo-${mes}`, [{
+      nombre: 'Ausentismo',
+      filas: [...actual.porPersona.entries()].map(([empleadoId, registro]) => {
+        const empleado = datos.empleados.find((e) => e.id === empleadoId)
+        const fila: Record<string, unknown> = {
+          Persona: empleado?.nombre ?? empleadoId,
+          País: empleado ? paisDe(empleado)?.nombre : '',
+          'Total días': registro.medios / 2,
+        }
+        for (const [tipoId, medios] of registro.porTipo) {
+          const tipo = datos.tiposAusencia.find((t) => t.id === tipoId)
+          fila[tipo?.nombre ?? tipoId] = medios / 2
+        }
+        return fila
+      }),
+    }])
+  }
+
+  return (
+    <>
+      <div className="encabezado-seccion">
+        <div className="campo" style={{ marginBottom: 0 }}>
+          <label htmlFor="rep-mes">Mes (las ausencias se atribuyen al mes en que inician)</label>
+          <input id="rep-mes" type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={{ width: 'auto' }} />
+        </div>
+        <button className="boton-secundario" onClick={exportar}>⬇ Excel del mes</button>
+      </div>
+
+      <div className="kpis">
+        <div className="kpi"><p className="valor">{formatearDias(actual.total)}</p><p className="etiqueta">Días de ausencia en {mes}</p></div>
+        <div className="kpi"><p className="valor">{actual.porPersona.size}</p><p className="etiqueta">Personas con ausencias</p></div>
+        <div className="kpi">
+          <p className="valor" style={{ color: variacion > 0 ? 'var(--peligro)' : 'var(--exito)' }}>
+            {variacion > 0 ? '+' : ''}{variacion / 2}
+          </p>
+          <p className="etiqueta">Días vs. mes anterior ({formatearDias(anterior.total)})</p>
+        </div>
+      </div>
+
+      {actual.porPersona.size === 0 ? (
+        <EstadoVacio emoji="📊" mensaje={`Sin ausencias aprobadas que inicien en ${mes}`} />
+      ) : (
+        <div className="contenedor-tabla">
+          <table>
+            <thead><tr><th>Persona</th><th>País</th><th>Detalle por tipo</th><th>Total días</th></tr></thead>
+            <tbody>
+              {[...actual.porPersona.entries()]
+                .sort((a, b) => b[1].medios - a[1].medios)
+                .map(([empleadoId, registro]) => {
+                  const empleado = datos.empleados.find((e) => e.id === empleadoId)
+                  if (!empleado) return null
+                  const pais = paisDe(empleado)
+                  return (
+                    <tr key={empleadoId}>
+                      <td>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Avatar empleado={empleado} /> {empleado.nombre}
+                        </span>
+                      </td>
+                      <td>{pais?.bandera} {pais?.nombre}</td>
+                      <td>
+                        {[...registro.porTipo.entries()].map(([tipoId, medios]) => {
+                          const tipo = datos.tiposAusencia.find((t) => t.id === tipoId)
+                          return (
+                            <span key={tipoId} className="insignia neutra" style={{ marginRight: 6 }}>
+                              {tipo?.icono} {formatearDias(medios)}
+                            </span>
+                          )
+                        })}
+                      </td>
+                      <td><strong>{formatearDias(registro.medios)}</strong></td>
+                    </tr>
+                  )
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+function ReporteProvision() {
+  const { datos, paisDe, saldoDe } = useStore()
+
+  const filasProvision = useMemo(() => {
+    return datos.empleados
+      .filter((e) => e.activo)
+      .map((empleado) => {
+        const saldo = saldoDe(empleado, 'vacaciones')
+        const diasDisponibles = saldo ? Math.max(saldo.disponibleMedios, 0) / 2 : 0
+        const compensacion = datos.compensaciones
+          .filter((c) => c.empleadoId === empleado.id)
+          .sort((a, b) => b.fechaEfectiva.localeCompare(a.fechaEfectiva))[0]
+        const valorDia = compensacion ? compensacion.montoBase / 30 : null
+        return {
+          empleado,
+          pais: paisDe(empleado),
+          diasDisponibles,
+          moneda: compensacion?.moneda ?? null,
+          salarioMensual: compensacion?.montoBase ?? null,
+          valorDia,
+          provision: valorDia != null ? diasDisponibles * valorDia : null,
+        }
+      })
+  }, [datos, paisDe, saldoDe])
+
+  const totalesPorMoneda = useMemo(() => {
+    const totales = new Map<string, number>()
+    for (const fila of filasProvision) {
+      if (fila.moneda && fila.provision != null) {
+        totales.set(fila.moneda, (totales.get(fila.moneda) ?? 0) + fila.provision)
+      }
+    }
+    return totales
+  }, [filasProvision])
+
+  const sinSalario = filasProvision.filter((f) => f.salarioMensual == null)
+
+  const exportar = () => {
+    void exportarExcel('provision-vacaciones', [{
+      nombre: 'Provisión',
+      filas: filasProvision.map((f) => ({
+        Persona: f.empleado.nombre,
+        País: f.pais?.nombre ?? '',
+        'Días disponibles': f.diasDisponibles,
+        Moneda: f.moneda ?? 'sin salario',
+        'Salario mensual': f.salarioMensual,
+        'Valor día (mensual/30)': f.valorDia != null ? Number(f.valorDia.toFixed(2)) : null,
+        'Provisión': f.provision != null ? Number(f.provision.toFixed(2)) : null,
+      })),
+    }])
+  }
+
+  return (
+    <>
+      <p className="nota-info" style={{ marginBottom: 16 }}>
+        📐 Pasivo laboral por vacaciones no gozadas: días disponibles × valor día (salario mensual ÷ 30),
+        en la moneda original de cada salario. Registra el salario base en la pestaña Compensación
+        para incluir a una persona.
+      </p>
+      <div className="encabezado-seccion">
+        <h2>Provisión de vacaciones</h2>
+        <button className="boton-secundario" onClick={exportar}>⬇ Excel de provisión</button>
+      </div>
+
+      <div className="kpis">
+        {[...totalesPorMoneda.entries()].map(([moneda, total]) => (
+          <div className="kpi" key={moneda}>
+            <p className="valor">{total.toLocaleString('es-NI', { maximumFractionDigits: 0 })}</p>
+            <p className="etiqueta">Provisión total en {moneda}</p>
+          </div>
+        ))}
+        {totalesPorMoneda.size === 0 && (
+          <div className="kpi"><p className="valor">—</p><p className="etiqueta">Sin salarios registrados aún</p></div>
+        )}
+      </div>
+
+      <div className="contenedor-tabla">
+        <table>
+          <thead>
+            <tr><th>Persona</th><th>País</th><th>Días disponibles</th><th>Salario mensual</th><th>Valor día</th><th>Provisión</th></tr>
+          </thead>
+          <tbody>
+            {filasProvision.map((f) => (
+              <tr key={f.empleado.id}>
+                <td>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Avatar empleado={f.empleado} /> {f.empleado.nombre}
+                  </span>
+                </td>
+                <td>{f.pais?.bandera} {f.pais?.nombre}</td>
+                <td><strong>{f.diasDisponibles}</strong></td>
+                <td>{f.salarioMensual != null ? `${f.moneda} ${f.salarioMensual.toLocaleString('es-NI')}` : <span className="insignia pendiente">sin salario</span>}</td>
+                <td>{f.valorDia != null ? `${f.moneda} ${f.valorDia.toLocaleString('es-NI', { maximumFractionDigits: 2 })}` : <span className="meta">—</span>}</td>
+                <td>{f.provision != null ? <strong>{f.moneda} {f.provision.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</strong> : <span className="meta">—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {sinSalario.length > 0 && (
+        <p className="meta" style={{ marginTop: 10 }}>
+          {sinSalario.length} persona{sinSalario.length === 1 ? '' : 's'} sin salario registrado quedan fuera del total.
+        </p>
+      )}
+    </>
+  )
+}
+
+function ReporteCalendario() {
+  const { datos } = useStore()
+  const [filtroPais, setFiltroPais] = useState<CodigoPais | 'todos'>('todos')
+
+  const miembros = datos.empleados.filter(
+    (e) => e.activo && (filtroPais === 'todos' || e.pais === filtroPais),
+  )
+
+  return (
+    <>
+      <div className="encabezado-seccion">
+        <h2>Calendario consolidado del grupo</h2>
+        <div className="segmento" style={{ maxWidth: 520 }} role="tablist" aria-label="Filtrar por país">
+          <button className={filtroPais === 'todos' ? 'activo' : ''} onClick={() => setFiltroPais('todos')} role="tab" aria-selected={filtroPais === 'todos'}>
+            Todos
+          </button>
+          {datos.paises.map((p) => (
+            <button key={p.codigo} className={filtroPais === p.codigo ? 'activo' : ''} onClick={() => setFiltroPais(p.codigo)} role="tab" aria-selected={filtroPais === p.codigo}>
+              {p.bandera}
+            </button>
+          ))}
+        </div>
+      </div>
+      <CalendarioEquipo miembros={miembros} />
+    </>
+  )
+}
+
+function PestanaReportes() {
+  const [subReporte, setSubReporte] = useState<SubReporte>('resumen')
+  const SUBREPORTES: { id: SubReporte; nombre: string }[] = [
+    { id: 'resumen', nombre: 'Resumen' },
+    { id: 'ausentismo', nombre: 'Ausentismo mensual' },
+    { id: 'provision', nombre: 'Provisión contable' },
+    { id: 'calendario', nombre: 'Calendario del grupo' },
+  ]
+  return (
+    <>
+      <div className="segmento" style={{ maxWidth: 640, marginBottom: 20 }} role="tablist" aria-label="Reportes">
+        {SUBREPORTES.map((r) => (
+          <button key={r.id} className={subReporte === r.id ? 'activo' : ''} onClick={() => setSubReporte(r.id)} role="tab" aria-selected={subReporte === r.id}>
+            {r.nombre}
+          </button>
+        ))}
+      </div>
+      {subReporte === 'resumen' && <ReporteResumen />}
+      {subReporte === 'ausentismo' && <ReporteAusentismo />}
+      {subReporte === 'provision' && <ReporteProvision />}
+      {subReporte === 'calendario' && <ReporteCalendario />}
+    </>
+  )
+}
+
+// ---------- Auditoría ----------
 
 function PestanaAuditoria() {
   const { datos } = useStore()
   const ordenada = [...datos.auditoria].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-  return (
-    <>
-      <p className="nota-info" style={{ marginBottom: 16 }}>
-        📜 Registro inmutable (sección 7.1): cada acción queda sellada con quién, cuándo y bajo qué política — respaldo ante auditorías laborales.
-      </p>
-      <div className="contenedor-tabla">
-        <table>
-          <thead><tr><th>Fecha</th><th>Actor</th><th>Acción</th><th>Detalle</th></tr></thead>
-          <tbody>
-            {ordenada.map((r) => {
-              const actor = datos.empleados.find((e) => e.id === r.actorId)
-              return (
-                <tr key={r.id}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.timestamp).toLocaleDateString('es-NI', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td>{actor?.nombre ?? r.actorId}</td>
-                  <td><span className="insignia neutra">{r.accion}</span></td>
-                  <td>{r.detalle}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </>
-  )
-}
 
-function PestanaCorreos() {
-  const { datos } = useStore()
-  const ordenados = [...datos.correos].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  const exportar = () => {
+    void exportarExcel('auditoria', [{
+      nombre: 'Auditoría',
+      filas: ordenada.map((r) => {
+        const actor = datos.empleados.find((e) => e.id === r.actorId)
+        return {
+          Fecha: new Date(r.timestamp).toLocaleString('es-NI'),
+          Actor: actor?.nombre ?? r.actorId,
+          Acción: r.accion,
+          Entidad: r.entidad,
+          Detalle: r.detalle,
+        }
+      }),
+    }])
+  }
+
   return (
     <>
-      <p className="nota-info" style={{ marginBottom: 16 }}>
-        ✉️ Simulación del canal de correo del prototipo: en producción estos mensajes saldrían por SMTP/servicio de email, además de la notificación en la app.
-      </p>
-      {ordenados.length === 0 ? (
-        <EstadoVacio emoji="📭" mensaje="Aún no se han enviado correos" />
+      <div className="encabezado-seccion">
+        <p className="nota-info" style={{ flex: 1 }}>
+          📜 Registro inmutable: cada acción queda sellada con quién, cuándo y bajo qué política — respaldo ante auditorías laborales.
+        </p>
+        <button className="boton-secundario" onClick={exportar}>⬇ Excel</button>
+      </div>
+      {ordenada.length === 0 ? (
+        <EstadoVacio emoji="📜" mensaje="Aún no hay acciones registradas" />
       ) : (
-        ordenados.map((c) => (
-          <div className="tarjeta" key={c.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-              <strong style={{ fontSize: 14.5 }}>{c.asunto}</strong>
-              <span className="meta">{new Date(c.timestamp).toLocaleDateString('es-NI', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            <p className="meta">Para: {c.para}</p>
-            <p style={{ fontSize: 14, marginTop: 6 }}>{c.cuerpo}</p>
-          </div>
-        ))
+        <div className="contenedor-tabla">
+          <table>
+            <thead><tr><th>Fecha</th><th>Actor</th><th>Acción</th><th>Detalle</th></tr></thead>
+            <tbody>
+              {ordenada.map((r) => {
+                const actor = datos.empleados.find((e) => e.id === r.actorId)
+                return (
+                  <tr key={r.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.timestamp).toLocaleDateString('es-NI', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td>{actor?.nombre ?? <span className="meta">sistema</span>}</td>
+                    <td><span className="insignia neutra">{r.accion}</span></td>
+                    <td>{r.detalle}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   )
@@ -628,12 +1101,12 @@ export function AdminView({ admin }: { admin: Empleado }) {
         ))}
       </nav>
 
-      {pestana === 'empleados' && <PestanaEmpleados admin={admin} />}
+      {pestana === 'empleados' && <PestanaEmpleados />}
       {pestana === 'politicas' && <PestanaPoliticas />}
-      {pestana === 'feriados' && <PestanaFeriados admin={admin} />}
+      {pestana === 'feriados' && <PestanaFeriados />}
+      {pestana === 'compensacion' && <PestanaCompensacion />}
       {pestana === 'reportes' && <PestanaReportes />}
       {pestana === 'auditoria' && <PestanaAuditoria />}
-      {pestana === 'correos' && <PestanaCorreos />}
     </div>
   )
 }
