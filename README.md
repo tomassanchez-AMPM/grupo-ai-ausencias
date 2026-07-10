@@ -1,15 +1,15 @@
-# Ausencias — Plataforma de RRHH multipaís
+# GRUPO A/I - Ausencias
 
-Tracker de vacaciones y permisos para un equipo distribuido en Nicaragua,
-Honduras, El Salvador y Panamá, con reglas de acumulación y conteo de días
-configurables por país. Diseñada a partir del documento de diseño interno
+Plataforma de RRHH multipaís del GRUPO A/I: tracker de vacaciones y permisos
+para un equipo distribuido en Nicaragua, Honduras, El Salvador y Panamá, con
+reglas de acumulación y conteo de días configurables por país. Diseñada a partir del documento de diseño interno
 (customizar lo que importa: políticas por país, tipos de ausencia y
 compensación; fijar lo demás: roles, flujo de aprobación y privacidad).
 
 ## Stack
 
 - **Front**: Vite + React + TypeScript estricto. Publicado en GitHub Pages.
-- **Backend**: Supabase (proyecto `ampm-ausencias`) — Postgres, Auth con
+- **Backend**: Supabase (proyecto «GRUPO A/I - Ausencias», ref `ozpbyncnsdxzocqczxzu`) — Postgres, Auth con
   enlace mágico por correo, y seguridad por fila (RLS): el empleado ve lo
   suyo, el jefe su equipo directo, el admin todo. La compensación es
   invisible para los jefes a nivel de base de datos.

@@ -30,7 +30,10 @@ export function LoginView() {
     <div className="login-envoltorio" style={{ maxWidth: 460 }}>
       <div className="marca" style={{ justifyContent: 'center', marginBottom: 6 }}>
         <span className="marca-logo" aria-hidden="true">🌴</span>
-        <span>Ausencias</span>
+        <span>
+          Ausencias
+          <small>GRUPO A/I</small>
+        </span>
       </div>
 
       {estado === 'enviado' ? (

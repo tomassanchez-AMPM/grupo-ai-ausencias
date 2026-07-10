@@ -31,7 +31,7 @@ function Sesion({ persona }: { persona: Empleado }) {
           <span className="marca-logo" aria-hidden="true">🌴</span>
           <span>
             Ausencias
-            <small>Grupo multipaís</small>
+            <small>GRUPO A/I</small>
           </span>
         </div>
         <div className="barra-derecha">
