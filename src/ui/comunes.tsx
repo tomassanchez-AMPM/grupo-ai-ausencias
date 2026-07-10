@@ -1,5 +1,6 @@
 // Primitivas de UI compartidas — consistencia entre las tres vistas.
 
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { reintegroDe } from '../domain/conteoDias'
 import { formatearCorto } from '../domain/fechas'
@@ -60,9 +61,19 @@ export function Modal({
   onCerrar: () => void
   children: ReactNode
 }) {
+  // Cerrar solo con acción explícita (✕, Cancelar o Escape): un clic
+  // accidental fuera del modal no debe descartar un formulario a medio llenar.
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCerrar()
+    }
+    document.addEventListener('keydown', alTeclear)
+    return () => document.removeEventListener('keydown', alTeclear)
+  }, [onCerrar])
+
   return (
-    <div className="modal-fondo" onClick={onCerrar} role="presentation">
-      <div className="modal" role="dialog" aria-modal="true" aria-label={titulo} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-fondo" role="presentation">
+      <div className="modal" role="dialog" aria-modal="true" aria-label={titulo}>
         <div className="modal-cabecera">
           <h2>{titulo}</h2>
           <button className="boton-fantasma" onClick={onCerrar} aria-label="Cerrar">

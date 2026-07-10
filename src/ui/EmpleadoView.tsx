@@ -32,7 +32,16 @@ function ItemSolicitud({ solicitud, propia }: { solicitud: SolicitudAusencia; pr
           </p>
         )}
         {propia && solicitud.estado === 'pendiente' && (
-          <button className="boton-fantasma" style={{ marginTop: 6, padding: '4px 8px', minHeight: 32 }} onClick={() => void cancelarSolicitud(solicitud.id)}>
+          <button
+            className="boton-fantasma"
+            style={{ marginTop: 6, padding: '4px 8px', minHeight: 32 }}
+            onClick={() => {
+              if (!window.confirm('¿Cancelar esta solicitud?')) return
+              void cancelarSolicitud(solicitud.id).then((r) => {
+                if (!r.ok) window.alert(r.error)
+              })
+            }}
+          >
             Cancelar solicitud
           </button>
         )}

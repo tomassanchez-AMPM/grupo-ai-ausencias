@@ -489,7 +489,15 @@ function PestanaFeriados() {
                     </td>
                     <td>{f.descripcion}</td>
                     <td style={{ textAlign: 'right' }}>
-                      <button className="boton-fantasma" onClick={() => void eliminarFeriado(f.id)}>
+                      <button
+                        className="boton-fantasma"
+                        onClick={() => {
+                          if (!window.confirm(`¿Eliminar el feriado "${f.descripcion}" (${formatearLargo(f.fecha)})?`)) return
+                          void eliminarFeriado(f.id).then((r) => {
+                            if (!r.ok) window.alert(r.error)
+                          })
+                        }}
+                      >
                         Eliminar
                       </button>
                     </td>

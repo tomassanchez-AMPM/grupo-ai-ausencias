@@ -139,27 +139,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Resuelve la sesión: vincula el usuario de Auth con su fila de empleados
   // (por correo, la primera vez) y carga los datos visibles.
   const resolverSesion = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      empleadoActualRef.current = null
-      setSesion({ fase: 'anonimo' })
-      setDatos(DATOS_VACIOS)
-      return
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        empleadoActualRef.current = null
+        setSesion({ fase: 'anonimo' })
+        setDatos(DATOS_VACIOS)
+        return
+      }
+      const { data, error } = await supabase.rpc('vincular_mi_usuario')
+      if (error) throw error
+      const fila = Array.isArray(data) ? data[0] : data
+      if (!fila) {
+        empleadoActualRef.current = null
+        setSesion({ fase: 'sin_registro', email: session.user.email ?? '' })
+        setDatos(DATOS_VACIOS)
+        return
+      }
+      const empleado = filas.aEmpleado(fila)
+      empleadoActualRef.current = empleado
+      // Cargar los datos ANTES de activar la sesión: las vistas asumen que los
+      // catálogos (países, tipos) ya existen cuando se montan.
+      await cargarDatos()
+      setSesion({ fase: 'activa', empleado })
+    } catch (error) {
+      // Fallo transitorio (red, timeout): conservar la sesión activa previa si
+      // existía; si no, volver al login en lugar de quedar en "Cargando…".
+      console.error('No se pudo resolver la sesión:', error)
+      setSesion((previa) => (previa.fase === 'activa' ? previa : { fase: 'anonimo' }))
     }
-    const { data, error } = await supabase.rpc('vincular_mi_usuario')
-    const fila = Array.isArray(data) ? data[0] : data
-    if (error || !fila) {
-      empleadoActualRef.current = null
-      setSesion({ fase: 'sin_registro', email: session.user.email ?? '' })
-      setDatos(DATOS_VACIOS)
-      return
-    }
-    const empleado = filas.aEmpleado(fila)
-    empleadoActualRef.current = empleado
-    // Cargar los datos ANTES de activar la sesión: las vistas asumen que los
-    // catálogos (países, tipos) ya existen cuando se montan.
-    await cargarDatos()
-    setSesion({ fase: 'activa', empleado })
   }, [cargarDatos])
 
   useEffect(() => {
@@ -300,11 +308,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .single()
       if (error) return { ok: false, error: mensajeDeError(error) }
 
+      // La auditoría de solicitudes la escribe la base (trigger tg_auditar_solicitud).
       const aprobador = aprobadorDe(empleado)
       const reintegro = reintegroDe({ fechaFin: entrada.fechaFin, fraccionFin: entrada.fraccionFin })
       const mensaje = `${empleado.nombre} solicitó ${tipo.nombre} desde el ${formatearCorto(entrada.fechaInicio)}, reintegro el ${formatearCorto(reintegro.fecha)}${reintegro.mediodia ? ' al mediodía' : ''} (${formatearDias(medioDias)}).`
       if (aprobador && aprobador.id !== empleado.id) await notificar(aprobador.id, mensaje, creada.id)
-      await auditar('creó', 'solicitud', creada.id, mensaje)
       await cargarDatos()
       return { ok: true }
     }
@@ -318,7 +326,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const tipo = datos.tiposAusencia.find((t) => t.id === solicitud.tipoAusenciaId)
       if (!empleado || !tipo) return { ok: false, error: 'Datos incompletos.' }
 
-      const { error } = await supabase
+      const { data: actualizadas, error } = await supabase
         .from('solicitudes')
         .update({
           estado: decision,
@@ -328,9 +336,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })
         .eq('id', id)
         .eq('estado', 'pendiente')
+        .select()
       if (error) return { ok: false, error: mensajeDeError(error) }
+      if (!actualizadas || actualizadas.length === 0) {
+        // Nadie la actualizó: otro aprobador se adelantó o fue cancelada.
+        await cargarDatos()
+        return { ok: false, error: 'La solicitud ya no está pendiente (alguien más la resolvió o fue cancelada).' }
+      }
 
-      const politica = politicaDe(empleado, tipo.id)
+      // La auditoría con sello de política la escribe la base (trigger).
       const verbo = decision === 'aprobada' ? 'aprobó' : 'rechazó'
       const reintegro = reintegroDe(solicitud)
       await notificar(
@@ -338,9 +352,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         `${actor.nombre} ${verbo} tu solicitud de ${tipo.nombre} (desde el ${formatearCorto(solicitud.fechaInicio)}, reintegro el ${formatearCorto(reintegro.fecha)}).${comentario ? ` Comentario: "${comentario}"` : ''}`,
         id,
       )
-      // Sello inmutable: quién, cuándo y bajo qué política (sección 7.1).
-      await auditar(verbo, 'solicitud', id,
-        `${tipo.nombre} de ${empleado.nombre} (${formatearDias(solicitud.medioDias)}) — política ${politica?.nombre ?? 'n/a'}`)
       await cargarDatos()
       return { ok: true }
     }
@@ -349,13 +360,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const solicitud = datos.solicitudes.find((s) => s.id === id)
       if (!solicitud || solicitud.estado !== 'pendiente')
         return { ok: false, error: 'Solo se cancelan solicitudes pendientes.' }
-      const { error } = await supabase
+      const { data: actualizadas, error } = await supabase
         .from('solicitudes')
         .update({ estado: 'cancelada' })
         .eq('id', id)
         .eq('estado', 'pendiente')
+        .select()
       if (error) return { ok: false, error: mensajeDeError(error) }
-      await auditar('canceló', 'solicitud', id, 'Cancelada por el solicitante antes de resolverse')
+      if (!actualizadas || actualizadas.length === 0) {
+        await cargarDatos()
+        return { ok: false, error: 'La solicitud ya no está pendiente.' }
+      }
       await cargarDatos()
       return { ok: true }
     }
