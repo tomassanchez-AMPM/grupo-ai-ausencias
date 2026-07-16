@@ -17,6 +17,16 @@ const SMTP_PORT = Number(Deno.env.get("SMTP_PORT") ?? "465");
 const SMTP_USER = Deno.env.get("SMTP_USER") ?? "noreplay@ampm.com.ni";
 const SMTP_FROM = Deno.env.get("SMTP_FROM") ?? "Ausencias GRUPO A/I <noreplay@ampm.com.ni>";
 
+// Asuntos CORTOS y fijos por tipo de aviso: los asuntos largos con tildes se
+// corrompen al plegarse en la codificación RFC 2047 (bug visto en Outlook:
+// "en=u buzón"). Bajo ~55 caracteres no hay plegado y las tildes viajan bien.
+function asuntoPara(mensaje: string): string {
+  if (mensaje.includes(" solicitó ")) return "Ausencias · Nueva solicitud pendiente";
+  if (mensaje.includes(" aprobó ")) return "Ausencias · Tu solicitud fue aprobada";
+  if (mensaje.includes(" rechazó ")) return "Ausencias · Tu solicitud fue rechazada";
+  return "Ausencias · Tienes una notificación";
+}
+
 function plantillaCorreo(nombre: string, mensaje: string): string {
   // HTML a base de tablas y sin imágenes externas: lo único que Outlook
   // renderiza de forma confiable.
@@ -85,10 +95,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, detalle: "destinatario sin correo real" }), { status: 200 });
     }
 
-    const asunto = notificacion.mensaje.length > 70
-      ? `Ausencias · ${notificacion.mensaje.slice(0, 67)}…`
-      : `Ausencias · ${notificacion.mensaje}`;
-
     const cliente = new SMTPClient({
       connection: {
         hostname: SMTP_HOST,
@@ -101,7 +107,7 @@ Deno.serve(async (req) => {
       await cliente.send({
         from: SMTP_FROM,
         to: empleado.email,
-        subject: asunto,
+        subject: asuntoPara(notificacion.mensaje),
         html: plantillaCorreo(empleado.nombre.split(" ")[0], notificacion.mensaje),
       });
     } catch (errorEnvio) {
