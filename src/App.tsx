@@ -34,7 +34,7 @@ function Sesion({ persona }: { persona: Empleado }) {
           </span>
           <span>
             Pausa
-            <small>Vacaciones y permisos</small>
+            <small>Pedir. Aprobar. Desconectar.</small>
           </span>
         </div>
         <div className="barra-derecha">
