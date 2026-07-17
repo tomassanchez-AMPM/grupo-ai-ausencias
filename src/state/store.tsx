@@ -11,7 +11,7 @@ import { calcularSaldo, type DetalleSaldo } from '../domain/acumulacion'
 import { contarMedioDias, formatearDias, reintegroDe } from '../domain/conteoDias'
 import { formatearISO, formatearCorto, parseFecha } from '../domain/fechas'
 import type {
-  AjusteSaldo, Compensacion, Empleado, Feriado, Fraccion, Notificacion,
+  AjusteSaldo, Empleado, Feriado, Fraccion, Notificacion,
   Pais, PoliticaAusencia, RegistroAuditoria, SolicitudAusencia, TipoAusencia,
 } from '../domain/types'
 import * as filas from './filas'
@@ -24,14 +24,13 @@ export interface DatosApp {
   feriados: Feriado[]
   solicitudes: SolicitudAusencia[]
   ajustes: AjusteSaldo[]
-  compensaciones: Compensacion[]
   auditoria: RegistroAuditoria[]
   notificaciones: Notificacion[]
 }
 
 const DATOS_VACIOS: DatosApp = {
   empleados: [], tiposAusencia: [], politicas: [], paises: [], feriados: [],
-  solicitudes: [], ajustes: [], compensaciones: [], auditoria: [], notificaciones: [],
+  solicitudes: [], ajustes: [], auditoria: [], notificaciones: [],
 }
 
 export type EstadoSesion =
@@ -79,7 +78,6 @@ interface StoreValor {
   guardarTipoAusencia: (tipo: TipoAusencia, esNuevo: boolean) => Promise<Resultado>
   agregarFeriado: (feriado: Omit<Feriado, 'id'>) => Promise<Resultado>
   eliminarFeriado: (id: string) => Promise<Resultado>
-  agregarCompensacion: (registro: Omit<Compensacion, 'id'>) => Promise<Resultado>
   marcarLeidas: () => Promise<void>
 }
 
@@ -101,7 +99,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCargandoDatos(true)
     try {
       // RLS recorta cada consulta a lo que el usuario puede ver.
-      const [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, compensaciones, auditoria, notificaciones] =
+      const [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, auditoria, notificaciones] =
         await Promise.all([
           supabase.from('paises').select('*').order('nombre'),
           supabase.from('tipos_ausencia').select('*').order('nombre'),
@@ -110,11 +108,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           supabase.from('empleados').select('*').order('nombre'),
           supabase.from('solicitudes').select('*').order('creada_en', { ascending: false }),
           supabase.from('ajustes_saldo').select('*'),
-          supabase.from('compensaciones').select('*').order('fecha_efectiva', { ascending: false }),
           supabase.from('auditoria').select('*').order('timestamp', { ascending: false }).limit(500),
           supabase.from('notificaciones').select('*').order('timestamp', { ascending: false }).limit(100),
         ])
-      const primerError = [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, compensaciones, auditoria, notificaciones]
+      const primerError = [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, auditoria, notificaciones]
         .map((r) => r.error)
         .find(Boolean)
       if (primerError) throw primerError
@@ -127,7 +124,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         empleados: (empleados.data ?? []).map(filas.aEmpleado),
         solicitudes: (solicitudes.data ?? []).map(filas.aSolicitud),
         ajustes: (ajustes.data ?? []).map(filas.aAjuste),
-        compensaciones: (compensaciones.data ?? []).map(filas.aCompensacion),
         auditoria: (auditoria.data ?? []).map(filas.aAuditoria),
         notificaciones: (notificaciones.data ?? []).map(filas.aNotificacion),
       })
@@ -478,26 +474,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true }
     }
 
-    const agregarCompensacion = async (registro: Omit<Compensacion, 'id'>): Promise<Resultado> => {
-      const empleado = datos.empleados.find((e) => e.id === registro.empleadoId)
-      const { data: creado, error } = await supabase
-        .from('compensaciones')
-        .insert({
-          empleado_id: registro.empleadoId,
-          fecha_efectiva: registro.fechaEfectiva,
-          moneda: registro.moneda,
-          monto_base: registro.montoBase,
-          motivo: registro.motivo,
-        })
-        .select()
-        .single()
-      if (error) return { ok: false, error: mensajeDeError(error) }
-      await auditar('registró compensación', 'compensacion', creado.id,
-        `${empleado?.nombre ?? registro.empleadoId}: ${registro.moneda} ${registro.montoBase.toLocaleString('es-NI')} efectivo ${formatearCorto(registro.fechaEfectiva)} — ${registro.motivo}`)
-      await cargarDatos()
-      return { ok: true }
-    }
-
     const marcarLeidas = async () => {
       const actor = yo()
       if (!actor) return
@@ -511,7 +487,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       entrarConCorreo, cerrarSesion, recargar: cargarDatos,
       crearSolicitud, resolverSolicitud, cancelarSolicitud, crearAjuste,
       guardarEmpleado, guardarTipoAusencia, agregarFeriado, eliminarFeriado,
-      agregarCompensacion, marcarLeidas,
+      marcarLeidas,
     }
   }, [sesion, datos, hoy, cargarDatos])
 

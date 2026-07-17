@@ -5,16 +5,15 @@
 Plataforma de vacaciones y permisos multipaís: tracker de solicitudes
 para un equipo distribuido en Nicaragua, Honduras, El Salvador y Panamá, con
 reglas de acumulación y conteo de días configurables por país. Diseñada a partir del documento de diseño interno
-(customizar lo que importa: políticas por país, tipos de ausencia y
-compensación; fijar lo demás: roles, flujo de aprobación y privacidad).
+(customizar lo que importa: políticas por país y tipos de ausencia;
+fijar lo demás: roles, flujo de aprobación y privacidad).
 
 ## Stack
 
 - **Front**: Vite + React + TypeScript estricto. Publicado en GitHub Pages.
 - **Backend**: Supabase (proyecto «Pausa», ref `ozpbyncnsdxzocqczxzu`) — Postgres, Auth con
   enlace mágico por correo, y seguridad por fila (RLS): el empleado ve lo
-  suyo, el jefe su equipo directo, el admin todo. La compensación es
-  invisible para los jefes a nivel de base de datos.
+  suyo, el jefe su equipo directo, el admin todo.
 - **Dominio puro** en `src/domain/` (acumulación, conteo por país, saldos),
   testeado con Vitest y sin dependencias de red — la fuente de verdad del
   negocio.

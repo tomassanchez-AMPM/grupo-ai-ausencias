@@ -116,17 +116,6 @@ export interface AjusteSaldo {
   actorId: string
 }
 
-/** Salario base versionado: nunca se sobreescribe, se agrega un registro.
- *  Reactivado para el reporte de provisión contable (solo admin). */
-export interface Compensacion {
-  id: string
-  empleadoId: string
-  fechaEfectiva: string
-  moneda: string
-  montoBase: number
-  motivo: string
-}
-
 export interface RegistroAuditoria {
   id: string
   actorId: string

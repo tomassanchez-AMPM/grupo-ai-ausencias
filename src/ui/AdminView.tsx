@@ -1,6 +1,6 @@
 // Consola Admin/RRHH: gestión de empleados, configuración (Nivel 1),
-// feriados, compensación (solo admin — el jefe no la ve, sección 3.1),
-// reportería con exportación a Excel y auditoría.
+// feriados, reportería con exportación a Excel y auditoría.
+// (El módulo de Compensación se agregará en una fase futura.)
 
 import { useMemo, useState } from 'react'
 import { formatearDias } from '../domain/conteoDias'
@@ -11,13 +11,12 @@ import { useStore } from '../state/store'
 import { Avatar, EstadoVacio, Modal } from './comunes'
 import { CalendarioEquipo } from './JefeView'
 
-type Pestana = 'empleados' | 'politicas' | 'feriados' | 'compensacion' | 'reportes' | 'auditoria'
+type Pestana = 'empleados' | 'politicas' | 'feriados' | 'reportes' | 'auditoria'
 
 const PESTANAS: { id: Pestana; nombre: string }[] = [
   { id: 'empleados', nombre: '👥 Empleados' },
   { id: 'politicas', nombre: '⚙️ Políticas y tipos' },
   { id: 'feriados', nombre: '🎉 Feriados' },
-  { id: 'compensacion', nombre: '💰 Compensación' },
   { id: 'reportes', nombre: '📊 Reportes' },
   { id: 'auditoria', nombre: '📜 Auditoría' },
 ]
@@ -523,129 +522,9 @@ function PestanaFeriados() {
   )
 }
 
-// ---------- Compensación (solo admin; alimenta la provisión contable) ----------
-
-function PestanaCompensacion() {
-  const { datos, agregarCompensacion } = useStore()
-  const [seleccionId, setSeleccionId] = useState('')
-  const [modalAbierto, setModalAbierto] = useState(false)
-  const [registro, setRegistro] = useState({
-    fechaEfectiva: new Date().toISOString().slice(0, 10),
-    moneda: 'USD', montoBase: '', motivo: '',
-  })
-  const [error, setError] = useState('')
-  const [guardando, setGuardando] = useState(false)
-
-  const activos = datos.empleados.filter((e) => e.activo)
-  const empleado = datos.empleados.find((e) => e.id === seleccionId) ?? activos[0]
-  const historial = empleado
-    ? datos.compensaciones
-        .filter((c) => c.empleadoId === empleado.id)
-        .sort((a, b) => b.fechaEfectiva.localeCompare(a.fechaEfectiva))
-    : []
-
-  const registrar = async () => {
-    if (!empleado) return
-    setError('')
-    setGuardando(true)
-    const resultado = await agregarCompensacion({
-      empleadoId: empleado.id,
-      fechaEfectiva: registro.fechaEfectiva,
-      moneda: registro.moneda,
-      montoBase: Number(registro.montoBase),
-      motivo: registro.motivo.trim(),
-    })
-    setGuardando(false)
-    if (!resultado.ok) { setError(resultado.error); return }
-    setModalAbierto(false)
-    setRegistro({ ...registro, montoBase: '', motivo: '' })
-  }
-
-  return (
-    <>
-      <p className="nota-info" style={{ marginBottom: 16 }}>
-        🔒 Visible solo para Administración/RRHH; los jefes no tienen acceso (regla a nivel de base de datos).
-        El historial nunca se sobreescribe: cada cambio agrega un registro. El salario base vigente alimenta
-        el reporte de provisión contable de vacaciones.
-      </p>
-      <div className="campo" style={{ maxWidth: 360 }}>
-        <label htmlFor="comp-emp">Persona</label>
-        <select id="comp-emp" value={empleado?.id ?? ''} onChange={(e) => setSeleccionId(e.target.value)}>
-          {activos.map((e) => <option key={e.id} value={e.id}>{e.nombre} — {e.puesto}</option>)}
-        </select>
-      </div>
-
-      {empleado && (
-        <>
-          <div className="encabezado-seccion" style={{ marginTop: 20 }}>
-            <h2>Historial de salario base</h2>
-            <button className="boton-primario" onClick={() => setModalAbierto(true)}>+ Registrar cambio</button>
-          </div>
-          {historial.length === 0 ? (
-            <EstadoVacio emoji="💼" mensaje="Sin registros de compensación" sugerencia="Registra el salario base para incluir a esta persona en la provisión contable." />
-          ) : (
-            <div className="contenedor-tabla">
-              <table>
-                <thead><tr><th>Vigente desde</th><th>Salario base mensual</th><th>Motivo</th></tr></thead>
-                <tbody>
-                  {historial.map((c, i) => (
-                    <tr key={c.id}>
-                      <td>{formatearLargo(c.fechaEfectiva)} {i === 0 && <span className="insignia aprobada" style={{ marginLeft: 6 }}>vigente</span>}</td>
-                      <td><strong>{c.moneda} {c.montoBase.toLocaleString('es-NI')}</strong></td>
-                      <td>{c.motivo}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-
-      {modalAbierto && empleado && (
-        <Modal titulo={`Registrar cambio — ${empleado.nombre}`} onCerrar={() => setModalAbierto(false)}>
-          <div className="fila-campos">
-            <div className="campo">
-              <label htmlFor="reg-fecha">Vigente desde</label>
-              <input id="reg-fecha" type="date" value={registro.fechaEfectiva} onChange={(e) => setRegistro({ ...registro, fechaEfectiva: e.target.value })} />
-            </div>
-            <div className="campo">
-              <label htmlFor="reg-moneda">Moneda</label>
-              <select id="reg-moneda" value={registro.moneda} onChange={(e) => setRegistro({ ...registro, moneda: e.target.value })}>
-                {['USD', 'NIO', 'HNL', 'PAB'].map((m) => <option key={m}>{m}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="fila-campos">
-            <div className="campo">
-              <label htmlFor="reg-monto">Salario base mensual</label>
-              <input id="reg-monto" type="number" min={0} value={registro.montoBase} onChange={(e) => setRegistro({ ...registro, montoBase: e.target.value })} />
-            </div>
-            <div className="campo">
-              <label htmlFor="reg-motivo">Motivo</label>
-              <input id="reg-motivo" value={registro.motivo} onChange={(e) => setRegistro({ ...registro, motivo: e.target.value })} placeholder="Ajuste anual, promoción…" />
-            </div>
-          </div>
-          {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button className="boton-secundario" onClick={() => setModalAbierto(false)}>Cancelar</button>
-            <button
-              className="boton-primario"
-              disabled={!registro.montoBase || !registro.motivo.trim() || guardando}
-              onClick={() => void registrar()}
-            >
-              {guardando ? 'Registrando…' : 'Registrar'}
-            </button>
-          </div>
-        </Modal>
-      )}
-    </>
-  )
-}
-
 // ---------- Reportes ----------
 
-type SubReporte = 'resumen' | 'ausentismo' | 'provision' | 'calendario'
+type SubReporte = 'resumen' | 'ausentismo' | 'calendario'
 
 function mesAnterior(mes: string): string {
   const [anio, numero] = mes.split('-').map(Number)
@@ -878,114 +757,6 @@ function ReporteAusentismo() {
   )
 }
 
-function ReporteProvision() {
-  const { datos, paisDe, saldoDe } = useStore()
-
-  const filasProvision = useMemo(() => {
-    return datos.empleados
-      .filter((e) => e.activo)
-      .map((empleado) => {
-        const saldo = saldoDe(empleado, 'vacaciones')
-        const diasDisponibles = saldo ? Math.max(saldo.disponibleMedios, 0) / 2 : 0
-        const compensacion = datos.compensaciones
-          .filter((c) => c.empleadoId === empleado.id)
-          .sort((a, b) => b.fechaEfectiva.localeCompare(a.fechaEfectiva))[0]
-        const valorDia = compensacion ? compensacion.montoBase / 30 : null
-        return {
-          empleado,
-          pais: paisDe(empleado),
-          diasDisponibles,
-          moneda: compensacion?.moneda ?? null,
-          salarioMensual: compensacion?.montoBase ?? null,
-          valorDia,
-          provision: valorDia != null ? diasDisponibles * valorDia : null,
-        }
-      })
-  }, [datos, paisDe, saldoDe])
-
-  const totalesPorMoneda = useMemo(() => {
-    const totales = new Map<string, number>()
-    for (const fila of filasProvision) {
-      if (fila.moneda && fila.provision != null) {
-        totales.set(fila.moneda, (totales.get(fila.moneda) ?? 0) + fila.provision)
-      }
-    }
-    return totales
-  }, [filasProvision])
-
-  const sinSalario = filasProvision.filter((f) => f.salarioMensual == null)
-
-  const exportar = () => {
-    void exportarExcel('provision-vacaciones', [{
-      nombre: 'Provisión',
-      filas: filasProvision.map((f) => ({
-        Persona: f.empleado.nombre,
-        País: f.pais?.nombre ?? '',
-        'Días disponibles': f.diasDisponibles,
-        Moneda: f.moneda ?? 'sin salario',
-        'Salario mensual': f.salarioMensual,
-        'Valor día (mensual/30)': f.valorDia != null ? Number(f.valorDia.toFixed(2)) : null,
-        'Provisión': f.provision != null ? Number(f.provision.toFixed(2)) : null,
-      })),
-    }])
-  }
-
-  return (
-    <>
-      <p className="nota-info" style={{ marginBottom: 16 }}>
-        📐 Pasivo laboral por vacaciones no gozadas: días disponibles × valor día (salario mensual ÷ 30),
-        en la moneda original de cada salario. Registra el salario base en la pestaña Compensación
-        para incluir a una persona.
-      </p>
-      <div className="encabezado-seccion">
-        <h2>Provisión de vacaciones</h2>
-        <button className="boton-secundario" onClick={exportar}>⬇ Excel de provisión</button>
-      </div>
-
-      <div className="kpis">
-        {[...totalesPorMoneda.entries()].map(([moneda, total]) => (
-          <div className="kpi" key={moneda}>
-            <p className="valor">{total.toLocaleString('es-NI', { maximumFractionDigits: 0 })}</p>
-            <p className="etiqueta">Provisión total en {moneda}</p>
-          </div>
-        ))}
-        {totalesPorMoneda.size === 0 && (
-          <div className="kpi"><p className="valor">—</p><p className="etiqueta">Sin salarios registrados aún</p></div>
-        )}
-      </div>
-
-      <div className="contenedor-tabla">
-        <table>
-          <thead>
-            <tr><th>Persona</th><th>País</th><th>Días disponibles</th><th>Salario mensual</th><th>Valor día</th><th>Provisión</th></tr>
-          </thead>
-          <tbody>
-            {filasProvision.map((f) => (
-              <tr key={f.empleado.id}>
-                <td>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Avatar empleado={f.empleado} /> {f.empleado.nombre}
-                  </span>
-                </td>
-                <td>{f.pais?.bandera} {f.pais?.nombre}</td>
-                <td><strong>{f.diasDisponibles}</strong></td>
-                <td>{f.salarioMensual != null ? `${f.moneda} ${f.salarioMensual.toLocaleString('es-NI')}` : <span className="insignia pendiente">sin salario</span>}</td>
-                <td>{f.valorDia != null ? `${f.moneda} ${f.valorDia.toLocaleString('es-NI', { maximumFractionDigits: 2 })}` : <span className="meta">—</span>}</td>
-                <td>{f.provision != null ? <strong>{f.moneda} {f.provision.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</strong> : <span className="meta">—</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {sinSalario.length > 0 && (
-        <p className="meta" style={{ marginTop: 10 }}>
-          {sinSalario.length} persona{sinSalario.length === 1 ? '' : 's'} sin salario registrado quedan fuera del total.
-        </p>
-      )}
-    </>
-  )
-}
-
 function ReporteCalendario() {
   const { datos } = useStore()
   const [filtroPais, setFiltroPais] = useState<CodigoPais | 'todos'>('todos')
@@ -1019,7 +790,6 @@ function PestanaReportes() {
   const SUBREPORTES: { id: SubReporte; nombre: string }[] = [
     { id: 'resumen', nombre: 'Resumen' },
     { id: 'ausentismo', nombre: 'Ausentismo mensual' },
-    { id: 'provision', nombre: 'Provisión contable' },
     { id: 'calendario', nombre: 'Calendario del grupo' },
   ]
   return (
@@ -1033,7 +803,6 @@ function PestanaReportes() {
       </div>
       {subReporte === 'resumen' && <ReporteResumen />}
       {subReporte === 'ausentismo' && <ReporteAusentismo />}
-      {subReporte === 'provision' && <ReporteProvision />}
       {subReporte === 'calendario' && <ReporteCalendario />}
     </>
   )
@@ -1123,7 +892,6 @@ export function AdminView({ admin }: { admin: Empleado }) {
       {pestana === 'empleados' && <PestanaEmpleados />}
       {pestana === 'politicas' && <PestanaPoliticas />}
       {pestana === 'feriados' && <PestanaFeriados />}
-      {pestana === 'compensacion' && <PestanaCompensacion />}
       {pestana === 'reportes' && <PestanaReportes />}
       {pestana === 'auditoria' && <PestanaAuditoria />}
     </div>

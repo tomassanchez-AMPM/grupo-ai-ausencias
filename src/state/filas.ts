@@ -3,7 +3,6 @@
 
 import type {
   AjusteSaldo,
-  Compensacion,
   Empleado,
   Feriado,
   Notificacion,
@@ -108,17 +107,6 @@ export function aAjuste(fila: any): AjusteSaldo {
     motivo: fila.motivo,
     fecha: fila.fecha,
     actorId: fila.actor_id,
-  }
-}
-
-export function aCompensacion(fila: any): Compensacion {
-  return {
-    id: fila.id,
-    empleadoId: fila.empleado_id,
-    fechaEfectiva: fila.fecha_efectiva,
-    moneda: fila.moneda,
-    montoBase: Number(fila.monto_base),
-    motivo: fila.motivo,
   }
 }
 
