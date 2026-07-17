@@ -11,6 +11,7 @@ import { Avatar } from './ui/comunes'
 import { EmpleadoView } from './ui/EmpleadoView'
 import { JefeView } from './ui/JefeView'
 import { LoginView } from './ui/LoginView'
+import { LogoPausa } from './ui/LogoPausa'
 
 type Vista = 'yo' | 'equipo' | 'admin'
 
@@ -28,10 +29,12 @@ function Sesion({ persona }: { persona: Empleado }) {
     <div className="app-shell">
       <header className="barra-superior">
         <div className="marca">
-          <span className="marca-logo" aria-hidden="true">🌴</span>
+          <span className="marca-logo">
+            <LogoPausa tamano={38} />
+          </span>
           <span>
-            Ausencias
-            <small>GRUPO A/I</small>
+            Pausa
+            <small>Vacaciones y permisos</small>
           </span>
         </div>
         <div className="barra-derecha">

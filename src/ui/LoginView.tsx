@@ -3,6 +3,7 @@
 
 import { useState } from 'react'
 import { useStore } from '../state/store'
+import { LogoPausa } from './LogoPausa'
 
 export function LoginView() {
   const { entrarConCorreo } = useStore()
@@ -28,12 +29,10 @@ export function LoginView() {
 
   return (
     <div className="login-envoltorio" style={{ maxWidth: 460 }}>
-      <div className="marca" style={{ justifyContent: 'center', marginBottom: 6 }}>
-        <span className="marca-logo" aria-hidden="true">🌴</span>
-        <span>
-          Ausencias
-          <small>GRUPO A/I</small>
-        </span>
+      <div style={{ textAlign: 'center', marginBottom: 18 }}>
+        <LogoPausa tamano={72} />
+        <h1 style={{ fontSize: 30, letterSpacing: '-0.5px', marginTop: 4 }}>Pausa</h1>
+        <p className="meta" style={{ marginTop: 2, fontWeight: 600 }}>Pedir. Aprobar. Desconectar.</p>
       </div>
 
       {estado === 'enviado' ? (

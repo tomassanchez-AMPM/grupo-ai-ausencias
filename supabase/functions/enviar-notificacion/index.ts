@@ -15,37 +15,37 @@ const URL_PLATAFORMA = "https://tomassanchez-ampm.github.io/grupo-ai-ausencias/"
 const SMTP_HOST = Deno.env.get("SMTP_HOST") ?? "ampmcomni.ipage.com";
 const SMTP_PORT = Number(Deno.env.get("SMTP_PORT") ?? "465");
 const SMTP_USER = Deno.env.get("SMTP_USER") ?? "noreplay@ampm.com.ni";
-const SMTP_FROM = Deno.env.get("SMTP_FROM") ?? "Ausencias GRUPO A/I <noreplay@ampm.com.ni>";
+const SMTP_FROM = Deno.env.get("SMTP_FROM") ?? "Pausa <noreplay@ampm.com.ni>";
 
 // Asuntos CORTOS y fijos por tipo de aviso: los asuntos largos con tildes se
 // corrompen al plegarse en la codificación RFC 2047 (bug visto en Outlook:
 // "en=u buzón"). Bajo ~55 caracteres no hay plegado y las tildes viajan bien.
 function asuntoPara(mensaje: string): string {
-  if (mensaje.includes(" solicitó ")) return "Ausencias · Nueva solicitud pendiente";
-  if (mensaje.includes(" aprobó ")) return "Ausencias · Tu solicitud fue aprobada";
-  if (mensaje.includes(" rechazó ")) return "Ausencias · Tu solicitud fue rechazada";
-  return "Ausencias · Tienes una notificación";
+  if (mensaje.includes(" solicitó ")) return "Pausa · Nueva solicitud pendiente";
+  if (mensaje.includes(" aprobó ")) return "Pausa · Tu solicitud fue aprobada";
+  if (mensaje.includes(" rechazó ")) return "Pausa · Tu solicitud fue rechazada";
+  return "Pausa · Tienes una notificación";
 }
 
 function plantillaCorreo(nombre: string, mensaje: string): string {
   // HTML a base de tablas y sin imágenes externas: lo único que Outlook
   // renderiza de forma confiable.
   return `
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F6F7FB;padding:24px 0;color-scheme:light;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F7F6F2;padding:24px 0;color-scheme:light;">
   <tr><td align="center">
-    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background-color:#FFFFFF;border:1px solid #E2E6F1;border-radius:12px;">
+    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background-color:#FFFFFF;border:1px solid #DFE6DF;border-radius:12px;">
       <tr>
-        <td style="background-color:#5B77D3;border-radius:12px 12px 0 0;padding:18px 28px;font-family:Arial,sans-serif;font-size:18px;font-weight:bold;color:#FFFFFF;">
-          🌴 Ausencias · GRUPO A/I
+        <td style="background-color:#0F3D3A;border-radius:12px 12px 0 0;padding:18px 28px;font-family:Arial,sans-serif;font-size:18px;font-weight:bold;color:#FFFFFF;">
+          ❚❚ &nbsp;Pausa
         </td>
       </tr>
       <tr>
-        <td style="padding:28px;font-family:Arial,sans-serif;font-size:14px;color:#21242E;line-height:1.6;">
+        <td style="padding:28px;font-family:Arial,sans-serif;font-size:14px;color:#1E2326;line-height:1.6;">
           <p style="margin:0 0 12px 0;">Hola ${nombre},</p>
           <p style="margin:0 0 20px 0;">${mensaje}</p>
           <table role="presentation" cellpadding="0" cellspacing="0">
             <tr>
-              <td bgcolor="#5B77D3" style="border-radius:24px;">
+              <td bgcolor="#0F3D3A" style="border-radius:24px;">
                 <a href="${URL_PLATAFORMA}" target="_blank"
                    style="display:inline-block;padding:12px 28px;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;color:#FFFFFF;text-decoration:none;">
                   Abrir la plataforma
@@ -56,8 +56,8 @@ function plantillaCorreo(nombre: string, mensaje: string): string {
         </td>
       </tr>
       <tr>
-        <td style="padding:16px 28px;border-top:1px solid #E2E6F1;font-family:Arial,sans-serif;font-size:11px;color:#9AA1B8;">
-          Este es un aviso automático de la plataforma de ausencias del GRUPO A/I. No respondas a este correo.
+        <td style="padding:16px 28px;border-top:1px solid #DFE6DF;font-family:Arial,sans-serif;font-size:11px;color:#97A59D;">
+          Este es un aviso automático de Pausa, tu plataforma de vacaciones y permisos. No respondas a este correo.
         </td>
       </tr>
     </table>

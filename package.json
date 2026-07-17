@@ -1,5 +1,5 @@
 {
-  "name": "grupo-ai-ausencias",
+  "name": "pausa",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -25,5 +25,5 @@
     "vite": "^8.1.1",
     "vitest": "^4.1.9"
   },
-  "description": "GRUPO A/I - Ausencias: plataforma de RRHH multipaís (vacaciones y permisos)"
+  "description": "Pausa: plataforma de vacaciones y permisos multipaís. Pedir. Aprobar. Desconectar."
 }

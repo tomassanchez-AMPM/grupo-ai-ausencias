@@ -1,29 +1,32 @@
-/* Identidad visual inspirada en humand.co:
-   índigo #5B77D3 · marino #1D2C75 · fondo claro con tintes índigo ·
-   tipografía SF (SF UI / SF Pro, nativa en Apple) · esquinas generosas y botones píldora */
+/* Identidad visual PAUSA (manual de marca):
+   verde profundo #0F3D3A · menta #A7DCCB · arena #EADBC1 ·
+   fondo cálido #F7F6F2 · verde bruma #E6ECE8 · tinta #1E2326 ·
+   esquinas generosas y botones píldora */
 :root {
-  --bg: #F6F7FB;
+  --bg: #F7F6F2;
   --surface: #FFFFFF;
-  --surface-2: #F1F3FA;
-  --surface-3: #E7EBF7;
-  --border: #E2E6F1;
-  --texto: #21242E;
-  --titulo: #1D2C75;
-  --muted: #646B85;
-  --muted-2: #9AA1B8;
-  --primario: #5B77D3;
-  --primario-hover: #4A66C8;
-  --primario-suave: #EEF2FF;
+  --surface-2: #EDF1EC;
+  --surface-3: #E6ECE8;
+  --border: #DFE6DF;
+  --texto: #1E2326;
+  --titulo: #0F3D3A;
+  --muted: #5F6E66;
+  --muted-2: #97A59D;
+  --primario: #0F3D3A;
+  --primario-hover: #17544F;
+  --primario-suave: #E6ECE8;
+  --menta: #A7DCCB;
+  --arena: #EADBC1;
   --exito: #0E9F6E;
   --exito-suave: #DEF7EC;
-  --peligro: #D93025;
-  --peligro-suave: #FDE8E8;
-  --aviso: #B45309;
-  --aviso-suave: #FDF0D5;
+  --peligro: #C6392E;
+  --peligro-suave: #FBEAE7;
+  --aviso: #A66321;
+  --aviso-suave: #F7EFDD;
   --radio: 16px;
   --radio-sm: 10px;
-  --sombra: 0 10px 32px rgba(29, 44, 117, 0.14);
-  --sombra-suave: 0 1px 3px rgba(29, 44, 117, 0.05), 0 6px 20px rgba(29, 44, 117, 0.05);
+  --sombra: 0 10px 32px rgba(15, 61, 58, 0.14);
+  --sombra-suave: 0 1px 3px rgba(15, 61, 58, 0.05), 0 6px 20px rgba(15, 61, 58, 0.05);
   color-scheme: light;
 }
 
@@ -89,9 +92,7 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); 
 }
 .marca { display: flex; align-items: center; gap: 10px; font-weight: 750; font-size: 17px; color: var(--titulo); }
 .marca-logo {
-  width: 36px; height: 36px; border-radius: 12px;
-  background: linear-gradient(135deg, var(--primario), var(--titulo));
-  display: grid; place-items: center; font-size: 17px;
+  width: 38px; height: 38px; display: grid; place-items: center;
 }
 .marca small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
 .barra-derecha { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -137,14 +138,14 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); 
 .insignia.rechazada { color: var(--peligro); background: var(--peligro-suave); border-color: #F5C2C0; }
 .insignia.cancelada { color: var(--muted); background: var(--surface-2); border-color: var(--border); }
 .insignia.neutra { color: var(--muted); background: var(--surface-2); border-color: var(--border); }
-.insignia.primaria { color: var(--primario-hover); background: var(--primario-suave); border-color: #D3DDFA; }
+.insignia.primaria { color: var(--titulo); background: var(--primario-suave); border-color: #CBDCD1; }
 
 .boton-primario {
   background: var(--primario); color: #fff; font-weight: 650; font-size: 14.5px;
   padding: 10px 22px; border-radius: 999px; transition: background .15s, box-shadow .15s;
-  box-shadow: 0 4px 14px rgba(91, 119, 211, 0.35);
+  box-shadow: 0 4px 14px rgba(15, 61, 58, 0.28);
 }
-.boton-primario:hover:not(:disabled) { background: var(--primario-hover); box-shadow: 0 6px 18px rgba(91, 119, 211, 0.4); }
+.boton-primario:hover:not(:disabled) { background: var(--primario-hover); box-shadow: 0 6px 18px rgba(15, 61, 58, 0.34); }
 .boton-secundario {
   background: var(--surface); color: var(--titulo); font-weight: 600; font-size: 14px;
   padding: 9px 18px; border-radius: 999px; border: 1px solid var(--border);
@@ -177,7 +178,7 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); 
 
 /* ---------- Modal ---------- */
 .modal-fondo {
-  position: fixed; inset: 0; background: rgba(29, 44, 117, 0.35);
+  position: fixed; inset: 0; background: rgba(15, 61, 58, 0.38);
   display: grid; place-items: center; padding: 20px; z-index: 50;
   backdrop-filter: blur(3px);
 }
@@ -223,7 +224,7 @@ th {
 }
 td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #F8FAFF; }
+tbody tr:hover { background: #F2F6F2; }
 
 /* ---------- Pestañas admin ---------- */
 .pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
@@ -245,7 +246,7 @@ tbody tr:hover { background: #F8FAFF; }
 }
 .calendario-celda.fuera { opacity: 0.32; }
 .calendario-celda.hoy { border-color: var(--primario); box-shadow: inset 0 0 0 1px var(--primario); background: var(--primario-suave); }
-.calendario-celda.feriado { background: #FFF8E8; }
+.calendario-celda.feriado { background: #F9F3E4; }
 .calendario-num { font-weight: 650; color: var(--muted); }
 .pastilla-ausencia {
   font-size: 10.5px; font-weight: 700; color: #fff;
@@ -306,7 +307,7 @@ tbody tr:hover { background: #F8FAFF; }
 .login-card:hover {
   transform: translateY(-2px);
   border-color: var(--primario);
-  box-shadow: 0 8px 24px rgba(91, 119, 211, 0.18);
+  box-shadow: 0 8px 24px rgba(15, 61, 58, 0.16);
 }
 .login-card .insignia { margin-left: auto; }
 
@@ -334,13 +335,13 @@ tbody tr:hover { background: #F8FAFF; }
 .kpi .etiqueta { font-size: 12px; color: var(--muted); font-weight: 600; }
 
 .nota-info {
-  background: var(--primario-suave); border: 1px solid #D3DDFA;
-  border-radius: var(--radio-sm); padding: 10px 14px; font-size: 13px; color: #47528A;
+  background: var(--primario-suave); border: 1px solid #CBDCD1;
+  border-radius: var(--radio-sm); padding: 10px 14px; font-size: 13px; color: #3E524A;
 }
 
 .segmento { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; gap: 2px; }
 .segmento button { flex: 1; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); min-height: 36px; }
-.segmento button.activo { background: var(--surface); color: var(--titulo); box-shadow: 0 1px 4px rgba(29, 44, 117, 0.14); }
+.segmento button.activo { background: var(--surface); color: var(--titulo); box-shadow: 0 1px 4px rgba(15, 61, 58, 0.12); }
 
 @media (max-width: 640px) {
   .app-shell { padding: 0 12px 60px; }
