@@ -105,9 +105,11 @@ export function CalendarioEquipo({ miembros }: { miembros: Empleado[] }) {
   }, [datos.solicitudes, datos.tiposAusencia, idsMiembros, miembros])
 
   const feriadosDelMes = useMemo(() => {
-    const mapa = new Map<string, string>()
+    const mapa = new Map<string, { descripcion: string; medioDia: boolean }>()
     for (const f of datos.feriados) {
-      if (paisesEquipo.has(f.pais)) mapa.set(f.fecha, f.descripcion)
+      if (paisesEquipo.has(f.pais)) {
+        mapa.set(f.fecha, { descripcion: f.descripcion, medioDia: f.medioDia })
+      }
     }
     return mapa
   }, [datos.feriados, paisesEquipo])
@@ -147,7 +149,15 @@ export function CalendarioEquipo({ miembros }: { miembros: Empleado[] }) {
           return (
             <div key={iso} className={`calendario-celda${esHoy ? ' hoy' : ''}${feriado ? ' feriado' : ''}`} role="gridcell">
               <span className="calendario-num">{fecha.getDate()}</span>
-              {feriado && <span className="pastilla-ausencia" style={{ background: 'var(--aviso)' }} title={feriado}>🎉 {feriado}</span>}
+              {feriado && (
+                <span
+                  className="pastilla-ausencia"
+                  style={{ background: 'var(--aviso)' }}
+                  title={`${feriado.descripcion}${feriado.medioDia ? ' (medio día)' : ''}`}
+                >
+                  🎉 {feriado.medioDia ? '½ ' : ''}{feriado.descripcion}
+                </span>
+              )}
               {ausencias.slice(0, 3).map((a, j) => (
                 <span
                   key={j}

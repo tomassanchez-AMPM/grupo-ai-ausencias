@@ -11,19 +11,24 @@ function esFinDeSemana(fechaISO: string, pais: Pais): boolean {
   return pais.finDeSemana.includes(parseFecha(fechaISO).getDay())
 }
 
-function esFeriado(fechaISO: string, pais: Pais, feriados: Feriado[]): boolean {
-  return feriados.some((f) => f.pais === pais.codigo && f.fecha === fechaISO)
-}
-
-/** ¿Este día descuenta saldo según el método del país? */
-export function diaCuenta(fechaISO: string, pais: Pais, feriados: Feriado[]): boolean {
+/**
+ * Cuántos medios días descuenta este día según el método del país:
+ * 2 = día completo · 1 = medio día (feriado de media jornada) · 0 = no cuenta.
+ * En países de días corridos los feriados SÍ cuentan (la vacación legal es
+ * calendario y no se extiende por feriados dentro del período).
+ */
+export function valorDiaEnMedios(fechaISO: string, pais: Pais, feriados: Feriado[]): 0 | 1 | 2 {
+  const feriado = feriados.find((f) => f.pais === pais.codigo && f.fecha === fechaISO)
   switch (pais.metodoConteo) {
     case 'laborables':
-      return !esFinDeSemana(fechaISO, pais) && !esFeriado(fechaISO, pais, feriados)
+      if (esFinDeSemana(fechaISO, pais)) return 0
+      if (feriado) return feriado.medioDia ? 1 : 0
+      return 2
     case 'corridos_sin_feriados':
-      return !esFeriado(fechaISO, pais, feriados)
+      if (feriado) return feriado.medioDia ? 1 : 0
+      return 2
     case 'corridos':
-      return true
+      return 2
   }
 }
 
@@ -47,16 +52,17 @@ export function contarMedioDias(rango: RangoSolicitud, pais: Pais, feriados: Fer
   let medios = 0
 
   for (const dia of dias) {
-    if (!diaCuenta(dia, pais, feriados)) continue
+    const base = valorDiaEnMedios(dia, pais, feriados)
+    if (base === 0) continue
 
     if (unSoloDia) {
-      medios += rango.fraccionInicio === 'completo' ? 2 : 1
+      medios += rango.fraccionInicio === 'completo' ? base : Math.min(base, 1)
       continue
     }
 
-    let mediosDelDia = 2
-    if (dia === rango.fechaInicio && rango.fraccionInicio === 'tarde') mediosDelDia = 1
-    if (dia === rango.fechaFin && rango.fraccionFin === 'manana') mediosDelDia = 1
+    let mediosDelDia: number = base
+    if (dia === rango.fechaInicio && rango.fraccionInicio === 'tarde') mediosDelDia = Math.min(base, 1)
+    if (dia === rango.fechaFin && rango.fraccionFin === 'manana') mediosDelDia = Math.min(base, 1)
     medios += mediosDelDia
   }
 

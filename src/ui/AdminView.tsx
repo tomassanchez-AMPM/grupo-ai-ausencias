@@ -398,6 +398,7 @@ function PestanaFeriados() {
   const [paisActivo, setPaisActivo] = useState<CodigoPais>('NI')
   const [fecha, setFecha] = useState('')
   const [descripcion, setDescripcion] = useState('')
+  const [medioDia, setMedioDia] = useState(false)
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
 
@@ -410,7 +411,7 @@ function PestanaFeriados() {
   const agregar = async () => {
     setError('')
     setGuardando(true)
-    const resultado = await agregarFeriado({ pais: paisActivo, fecha, descripcion })
+    const resultado = await agregarFeriado({ pais: paisActivo, fecha, descripcion, medioDia })
     setGuardando(false)
     if (!resultado.ok) {
       setError(resultado.error)
@@ -418,6 +419,7 @@ function PestanaFeriados() {
     }
     setFecha('')
     setDescripcion('')
+    setMedioDia(false)
   }
 
   return (
@@ -459,6 +461,12 @@ function PestanaFeriados() {
             />
           </div>
         </div>
+        <div className="campo">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={medioDia} onChange={(e) => setMedioDia(e.target.checked)} />
+            Medio día (el asueto legal cubre solo media jornada)
+          </label>
+        </div>
         {error && <p className="error-inline" style={{ marginBottom: 12 }} role="alert">{error}</p>}
         <button className="boton-primario" onClick={() => void agregar()} disabled={!fecha || !descripcion.trim() || guardando}>
           {guardando ? 'Agregando…' : '+ Agregar feriado'}
@@ -487,7 +495,10 @@ function PestanaFeriados() {
                       {formatearLargo(f.fecha)}
                       {esOtroAnio && <span className="insignia neutra" style={{ marginLeft: 8 }}>{parseFecha(f.fecha).getFullYear()}</span>}
                     </td>
-                    <td>{f.descripcion}</td>
+                    <td>
+                      {f.descripcion}
+                      {f.medioDia && <span className="insignia pendiente" style={{ marginLeft: 8 }}>½ día</span>}
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <button
                         className="boton-fantasma"

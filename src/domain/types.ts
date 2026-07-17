@@ -24,6 +24,9 @@ export interface Feriado {
   pais: CodigoPais
   fecha: string // YYYY-MM-DD
   descripcion: string
+  /** true = solo medio día es feriado (ej. miércoles y sábado del
+   *  Feriado Morazánico hondureño: asueto desde/hasta las 12:00 M). */
+  medioDia: boolean
 }
 
 export interface TipoAusencia {

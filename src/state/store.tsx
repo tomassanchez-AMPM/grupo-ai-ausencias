@@ -447,7 +447,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!feriado.descripcion.trim()) return { ok: false, error: 'Indica el nombre del feriado.' }
       const { data: creado, error } = await supabase
         .from('feriados')
-        .insert({ pais: feriado.pais, fecha: feriado.fecha, descripcion: feriado.descripcion.trim() })
+        .insert({
+          pais: feriado.pais,
+          fecha: feriado.fecha,
+          descripcion: feriado.descripcion.trim(),
+          medio_dia: feriado.medioDia,
+        })
         .select()
         .single()
       if (error) {
@@ -456,7 +461,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const pais = datos.paises.find((p) => p.codigo === feriado.pais)
       await auditar('agregó feriado', 'feriado', creado.id,
-        `${pais?.nombre ?? feriado.pais}: ${formatearCorto(feriado.fecha)} — ${feriado.descripcion.trim()}`)
+        `${pais?.nombre ?? feriado.pais}: ${formatearCorto(feriado.fecha)}${feriado.medioDia ? ' (medio día)' : ''} — ${feriado.descripcion.trim()}`)
       await cargarDatos()
       return { ok: true }
     }

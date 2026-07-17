@@ -20,8 +20,8 @@ const honduras: Pais = {
 
 // Lunes 2026-07-06 … domingo 2026-07-12. Feriado el jueves 9 en ambos países.
 const feriados: Feriado[] = [
-  { id: 'f1', pais: 'NI', fecha: '2026-07-09', descripcion: 'Feriado de prueba' },
-  { id: 'f2', pais: 'HN', fecha: '2026-07-09', descripcion: 'Feriado de prueba' },
+  { id: 'f1', pais: 'NI', fecha: '2026-07-09', descripcion: 'Feriado de prueba', medioDia: false },
+  { id: 'f2', pais: 'HN', fecha: '2026-07-09', descripcion: 'Feriado de prueba', medioDia: false },
 ]
 
 const semanaCompleta = {
@@ -77,6 +77,39 @@ describe('contarMedioDias — medio día (sección 5.3)', () => {
   })
 })
 
+describe('contarMedioDias — feriados de medio día (Feriado Morazánico HN)', () => {
+  // Bloque morazánico 2026: mié 7-oct (½), jue 8 y vie 9 (completos), sáb 10 (½).
+  const morazanico: Feriado[] = [
+    { id: 'm1', pais: 'HN', fecha: '2026-10-07', descripcion: 'Morazánico inicio', medioDia: true },
+    { id: 'm2', pais: 'HN', fecha: '2026-10-08', descripcion: 'Morazánico', medioDia: false },
+    { id: 'm3', pais: 'HN', fecha: '2026-10-09', descripcion: 'Morazánico', medioDia: false },
+    { id: 'm4', pais: 'HN', fecha: '2026-10-10', descripcion: 'Morazánico cierre', medioDia: true },
+  ]
+
+  it('el miércoles medio feriado descuenta solo 1 medio día', () => {
+    const dia = { fechaInicio: '2026-10-07', fechaFin: '2026-10-07', fraccionInicio: 'completo' as const, fraccionFin: 'completo' as const }
+    expect(contarMedioDias(dia, honduras, morazanico)).toBe(1)
+  })
+
+  it('semana completa de vacaciones sobre el bloque morazánico', () => {
+    // lun 5 (2) + mar 6 (2) + mié 7 ½feriado (1) + jue 8 (0) + vie 9 (0)
+    // + sáb 10 (0: fin de semana pesa más que el ½) + dom 11 (0) = 5 medios
+    const semana = { fechaInicio: '2026-10-05', fechaFin: '2026-10-11', fraccionInicio: 'completo' as const, fraccionFin: 'completo' as const }
+    expect(contarMedioDias(semana, honduras, morazanico)).toBe(5)
+  })
+
+  it('en país de días corridos el medio feriado cuenta completo', () => {
+    const paisCorrido: Pais = { ...honduras, codigo: 'HN', metodoConteo: 'corridos' }
+    const dia = { fechaInicio: '2026-10-07', fechaFin: '2026-10-07', fraccionInicio: 'completo' as const, fraccionFin: 'completo' as const }
+    expect(contarMedioDias(dia, paisCorrido, morazanico)).toBe(2)
+  })
+
+  it('fracción de tarde sobre medio feriado no duplica el descuento', () => {
+    const dia = { fechaInicio: '2026-10-07', fechaFin: '2026-10-07', fraccionInicio: 'tarde' as const, fraccionFin: 'tarde' as const }
+    expect(contarMedioDias(dia, honduras, morazanico)).toBe(1)
+  })
+})
+
 describe('rangoDesdeReintegro — el reintegro define la ausencia', () => {
   it('reintegro lunes en país de días corridos incluye el fin de semana', () => {
     // Caso de Tomás: sale el lunes 6 jul y se reintegra el lunes 13 jul.
@@ -102,7 +135,7 @@ describe('rangoDesdeReintegro — el reintegro define la ausencia', () => {
 
   it('el feriado dentro del rango sigue sin contarse (NI: corridos SIN feriados)', () => {
     // 13 jul → reintegro 20 jul con feriado el 19: 7 días corridos − 1 feriado = 6.
-    const feriado: Feriado[] = [{ id: 'f', pais: 'NI', fecha: '2026-07-19', descripcion: 'Día de la Revolución' }]
+    const feriado: Feriado[] = [{ id: 'f', pais: 'NI', fecha: '2026-07-19', descripcion: 'Día de la Revolución', medioDia: false }]
     const rango = rangoDesdeReintegro({
       fechaInicio: '2026-07-13', fraccionInicio: 'completo',
       fechaReintegro: '2026-07-20', reintegroMediodia: false,

@@ -55,7 +55,13 @@ export function aPolitica(fila: any): PoliticaAusencia {
 }
 
 export function aFeriado(fila: any): Feriado {
-  return { id: fila.id, pais: fila.pais, fecha: fila.fecha, descripcion: fila.descripcion }
+  return {
+    id: fila.id,
+    pais: fila.pais,
+    fecha: fila.fecha,
+    descripcion: fila.descripcion,
+    medioDia: fila.medio_dia ?? false,
+  }
 }
 
 export function aEmpleado(fila: any): Empleado {
