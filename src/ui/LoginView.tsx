@@ -1,7 +1,9 @@
-// Inicio de sesión con enlace mágico + código de respaldo: algunos escáneres
-// de correo corporativos (Microsoft Safe Links) consumen el enlace de un solo
-// uso antes que el usuario; el código numérico escrito en la app es
-// inmune a eso. (La longitud del código la define Supabase — hoy 8 dígitos.)
+// Inicio de sesión solo con código por correo. El correo NO lleva enlace:
+// los escáneres corporativos (Microsoft Safe Links) detonan cualquier enlace
+// antes de entregar el correo, y como enlace y código comparten el mismo
+// token de un solo uso, detonar el enlace también invalida el código
+// (confirmado en logs de auth: IPs Azure consumen /verify a los ~20 s).
+// (La longitud del código la define Supabase — hoy 8 dígitos.)
 
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
@@ -77,16 +79,10 @@ export function LoginView() {
         <div className="tarjeta">
           <p style={{ fontSize: 34, textAlign: 'center' }} aria-hidden="true">📬</p>
           <h1 style={{ textAlign: 'center', marginTop: 6 }}>Revisa tu correo</h1>
-          <p className="meta" style={{ textAlign: 'center', marginTop: 8 }}>
-            Enviamos un mensaje a <strong style={{ color: 'var(--titulo)' }}>{email.trim()}</strong> con
-            dos formas de entrar:
-          </p>
-          <p className="meta" style={{ marginTop: 12 }}>
-            <strong style={{ color: 'var(--titulo)' }}>1.</strong> Pulsa el botón «Entrar a Pausa» del correo, <em>o</em>
-          </p>
-          <p className="meta" style={{ marginTop: 4, marginBottom: 8 }}>
-            <strong style={{ color: 'var(--titulo)' }}>2.</strong> Escribe aquí el <strong style={{ color: 'var(--titulo)' }}>código de acceso</strong> que
-            viene en el mismo correo (útil si el enlace te regresa a esta pantalla):
+          <p className="meta" style={{ textAlign: 'center', marginTop: 8, marginBottom: 8 }}>
+            Enviamos un <strong style={{ color: 'var(--titulo)' }}>código de acceso</strong> a{' '}
+            <strong style={{ color: 'var(--titulo)' }}>{email.trim()}</strong>.
+            Escríbelo aquí para entrar:
           </p>
           <div className="campo">
             <label htmlFor="login-codigo">Código de acceso</label>
@@ -114,7 +110,7 @@ export function LoginView() {
           </button>
           <p style={{ textAlign: 'center', marginTop: 10 }}>
             <button className="boton-fantasma" onClick={() => { setEstado('inicial'); setCodigo(''); setError('') }}>
-              Usar otro correo o pedir un enlace nuevo
+              Usar otro correo o pedir un código nuevo
             </button>
           </p>
         </div>
@@ -122,7 +118,7 @@ export function LoginView() {
         <div className="tarjeta">
           <h1 style={{ textAlign: 'center' }}>Inicia sesión</h1>
           <p className="meta" style={{ textAlign: 'center', margin: '8px 0 18px' }}>
-            Escribe tu correo de la empresa y te enviaremos un enlace y un código de acceso.
+            Escribe tu correo de la empresa y te enviaremos un código de acceso.
             Sin contraseñas.
           </p>
           {aviso && <p className="error-inline" style={{ marginBottom: 14 }} role="alert">{aviso}</p>}

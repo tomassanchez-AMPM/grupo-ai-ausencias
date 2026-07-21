@@ -67,8 +67,8 @@ interface StoreValor {
   pendientesDe: (aprobadorId: string) => SolicitudAusencia[]
   // Autenticación
   entrarConCorreo: (email: string) => Promise<Resultado>
-  /** Alternativa al enlace: código de 6 dígitos del mismo correo (inmune a
-   *  los escáneres corporativos que consumen el enlace de un solo uso). */
+  /** Entrada con el código numérico del correo (el correo no lleva enlace:
+   *  los escáneres corporativos lo detonarían y el token es el mismo). */
   entrarConCodigo: (email: string, codigo: string) => Promise<Resultado>
   cerrarSesion: () => Promise<void>
   // Acciones (todas contra Supabase; refrescan los datos al terminar)
