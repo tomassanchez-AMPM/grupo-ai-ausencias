@@ -67,6 +67,9 @@ interface StoreValor {
   pendientesDe: (aprobadorId: string) => SolicitudAusencia[]
   // Autenticación
   entrarConCorreo: (email: string) => Promise<Resultado>
+  /** Alternativa al enlace: código de 6 dígitos del mismo correo (inmune a
+   *  los escáneres corporativos que consumen el enlace de un solo uso). */
+  entrarConCodigo: (email: string, codigo: string) => Promise<Resultado>
   cerrarSesion: () => Promise<void>
   // Acciones (todas contra Supabase; refrescan los datos al terminar)
   recargar: () => Promise<void>
@@ -242,6 +245,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim().toLowerCase(),
         options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      })
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      return { ok: true }
+    }
+
+    const entrarConCodigo = async (email: string, codigo: string): Promise<Resultado> => {
+      const { error } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: codigo.trim(),
+        type: 'email',
       })
       if (error) return { ok: false, error: mensajeDeError(error) }
       return { ok: true }
@@ -484,7 +497,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return {
       sesion, datos, hoy, cargandoDatos,
       paisDe, politicaDe, aprobadorDe, saldoDe, equipoDe, pendientesDe,
-      entrarConCorreo, cerrarSesion, recargar: cargarDatos,
+      entrarConCorreo, entrarConCodigo, cerrarSesion, recargar: cargarDatos,
       crearSolicitud, resolverSolicitud, cancelarSolicitud, crearAjuste,
       guardarEmpleado, guardarTipoAusencia, agregarFeriado, eliminarFeriado,
       marcarLeidas,
