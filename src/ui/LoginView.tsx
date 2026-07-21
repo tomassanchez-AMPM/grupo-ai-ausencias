@@ -1,7 +1,7 @@
 // Inicio de sesión con enlace mágico + código de respaldo: algunos escáneres
 // de correo corporativos (Microsoft Safe Links) consumen el enlace de un solo
-// uso antes que el usuario; el código de 6 dígitos escrito en la app es
-// inmune a eso.
+// uso antes que el usuario; el código numérico escrito en la app es
+// inmune a eso. (La longitud del código la define Supabase — hoy 8 dígitos.)
 
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
@@ -15,7 +15,7 @@ function errorDesdeUrl(): string | null {
   const codigo = hash.get('error_code') ?? ''
   window.history.replaceState(null, '', window.location.pathname)
   if (codigo === 'otp_expired') {
-    return 'Ese enlace ya fue usado o expiró (a veces el antivirus del correo lo consume). Escribe tu correo y usa el código de 6 dígitos que viene en el mensaje.'
+    return 'Ese enlace ya fue usado o expiró (a veces el antivirus del correo lo consume). Escribe tu correo y usa el código que viene en el mensaje.'
   }
   return 'No se pudo completar el acceso con el enlace. Pide uno nuevo o usa el código del correo.'
 }
@@ -52,8 +52,8 @@ export function LoginView() {
 
   const verificarCodigo = async () => {
     setError('')
-    if (!/^\d{6}$/.test(codigo.trim())) {
-      setError('El código son los 6 dígitos que vienen en el correo.')
+    if (!/^\d{6,10}$/.test(codigo.trim())) {
+      setError('El código son los dígitos que vienen en el recuadro del correo.')
       return
     }
     setEstado('verificando')
@@ -85,7 +85,7 @@ export function LoginView() {
             <strong style={{ color: 'var(--titulo)' }}>1.</strong> Pulsa el botón «Entrar a Pausa» del correo, <em>o</em>
           </p>
           <p className="meta" style={{ marginTop: 4, marginBottom: 8 }}>
-            <strong style={{ color: 'var(--titulo)' }}>2.</strong> Escribe aquí el <strong style={{ color: 'var(--titulo)' }}>código de 6 dígitos</strong> que
+            <strong style={{ color: 'var(--titulo)' }}>2.</strong> Escribe aquí el <strong style={{ color: 'var(--titulo)' }}>código de acceso</strong> que
             viene en el mismo correo (útil si el enlace te regresa a esta pantalla):
           </p>
           <div className="campo">
@@ -94,12 +94,12 @@ export function LoginView() {
               id="login-codigo"
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="123456"
-              maxLength={6}
+              placeholder="12345678"
+              maxLength={10}
               value={codigo}
               onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
               onKeyDown={(e) => { if (e.key === 'Enter') void verificarCodigo() }}
-              style={{ fontSize: 22, letterSpacing: '0.4em', textAlign: 'center', fontWeight: 700 }}
+              style={{ fontSize: 22, letterSpacing: '0.22em', textAlign: 'center', fontWeight: 700 }}
               disabled={estado === 'verificando'}
             />
           </div>
@@ -108,7 +108,7 @@ export function LoginView() {
             className="boton-primario"
             style={{ width: '100%' }}
             onClick={() => void verificarCodigo()}
-            disabled={estado === 'verificando' || codigo.length !== 6}
+            disabled={estado === 'verificando' || codigo.length < 6}
           >
             {estado === 'verificando' ? 'Verificando…' : 'Entrar con el código'}
           </button>
