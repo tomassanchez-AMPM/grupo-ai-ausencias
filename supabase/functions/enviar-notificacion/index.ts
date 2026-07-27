@@ -24,6 +24,7 @@ function asuntoPara(mensaje: string): string {
   if (mensaje.includes(" solicitó ")) return "Pausa · Nueva solicitud pendiente";
   if (mensaje.includes(" aprobó ")) return "Pausa · Tu solicitud fue aprobada";
   if (mensaje.includes(" rechazó ")) return "Pausa · Tu solicitud fue rechazada";
+  if (mensaje.includes(" canceló ")) return "Pausa · Tu ausencia fue cancelada";
   return "Pausa · Tienes una notificación";
 }
 

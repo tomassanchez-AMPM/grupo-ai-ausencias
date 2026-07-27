@@ -75,6 +75,74 @@ function TarjetaAprobacion({ solicitud }: { solicitud: SolicitudAusencia }) {
   )
 }
 
+function TarjetaAprobada({ solicitud }: { solicitud: SolicitudAusencia }) {
+  const { datos, cancelarAprobada } = useStore()
+  const [abierta, setAbierta] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [error, setError] = useState('')
+  const [cancelando, setCancelando] = useState(false)
+  const empleado = datos.empleados.find((e) => e.id === solicitud.empleadoId)
+  const tipo = datos.tiposAusencia.find((t) => t.id === solicitud.tipoAusenciaId)
+  if (!empleado || !tipo) return null
+
+  const cancelar = async () => {
+    if (cancelando) return
+    if (!window.confirm(`¿Cancelar esta ausencia aprobada de ${empleado.nombre}? Los días regresan a su saldo y se le avisará por correo.`)) return
+    setCancelando(true)
+    setError('')
+    const resultado = await cancelarAprobada(solicitud.id, motivo)
+    setCancelando(false)
+    if (!resultado.ok) setError(resultado.error)
+  }
+
+  return (
+    <div className="tarjeta">
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <Avatar empleado={empleado} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <strong>{empleado.nombre}</strong>
+            <span className="insignia aprobada">Aprobada</span>
+          </div>
+          <p style={{ fontSize: 14.5, marginTop: 2 }}>
+            {tipo.icono} {tipo.nombre} · <strong>{textoPeriodo(solicitud)}</strong> · {formatearDias(solicitud.medioDias)}
+          </p>
+          {!abierta ? (
+            <button className="boton-fantasma" style={{ marginTop: 8, padding: '4px 8px', minHeight: 32 }} onClick={() => setAbierta(true)}>
+              Cancelar esta ausencia…
+            </button>
+          ) : (
+            <>
+              <div className="campo" style={{ marginTop: 10, marginBottom: 10 }}>
+                <label htmlFor={`motivo-${solicitud.id}`}>Motivo de la cancelación (obligatorio; el empleado lo verá)</label>
+                <input
+                  id={`motivo-${solicitud.id}`}
+                  type="text"
+                  placeholder="Ej.: cambio de fechas por necesidad operativa"
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                />
+              </div>
+              {error && <p className="error-inline" style={{ marginBottom: 10 }} role="alert">{error}</p>}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="boton-peligro" onClick={() => void cancelar()} disabled={cancelando || !motivo.trim()}>
+                  {cancelando ? 'Cancelando…' : 'Confirmar cancelación'}
+                </button>
+                <button className="boton-secundario" onClick={() => { setAbierta(false); setMotivo(''); setError('') }} disabled={cancelando}>
+                  Volver
+                </button>
+              </div>
+              <p className="meta" style={{ marginTop: 8 }}>
+                Si solo cambian las fechas: cancela esta y que el empleado solicite de nuevo.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 const DIAS_SEMANA = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
 
@@ -185,10 +253,17 @@ export function CalendarioEquipo({ miembros }: { miembros: Empleado[] }) {
 }
 
 export function JefeView({ jefe }: { jefe: Empleado }) {
-  const { datos, equipoDe, pendientesDe, saldoDe, paisDe } = useStore()
+  const { datos, hoy, equipoDe, pendientesDe, saldoDe, paisDe } = useStore()
   const equipo = equipoDe(jefe.id)
   const pendientes = pendientesDe(jefe.id)
   const tiposConSaldo = datos.tiposAusencia.filter((t) => t.descuentaSaldo)
+
+  // Aprobadas vigentes o futuras que este rol puede cancelar: el jefe las de
+  // su equipo directo; un admin las de toda la organización.
+  const idsAmbito = new Set((jefe.rol === 'admin' ? datos.empleados : equipo).map((e) => e.id))
+  const aprobadasCancelables = datos.solicitudes
+    .filter((s) => s.estado === 'aprobada' && idsAmbito.has(s.empleadoId) && s.fechaFin >= hoy)
+    .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio))
 
   return (
     <div>
@@ -213,6 +288,22 @@ export function JefeView({ jefe }: { jefe: Empleado }) {
           </div>
         )}
       </section>
+
+      {aprobadasCancelables.length > 0 && (
+        <section aria-label="Ausencias aprobadas" style={{ marginBottom: 28 }}>
+          <div className="encabezado-seccion">
+            <h2>Aprobadas en curso o próximas{jefe.rol === 'admin' ? ' (toda la organización)' : ''}</h2>
+          </div>
+          <p className="meta" style={{ marginBottom: 12 }}>
+            Una aprobada no se edita: se cancela con motivo (queda en auditoría y se avisa al
+            empleado) y, si hacen falta otras fechas, se solicita de nuevo. Los días cancelados
+            regresan solos al saldo.
+          </p>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {aprobadasCancelables.map((s) => <TarjetaAprobada key={s.id} solicitud={s} />)}
+          </div>
+        </section>
+      )}
 
       <section aria-label="Calendario del equipo" style={{ marginBottom: 28 }}>
         <h2 style={{ marginBottom: 12 }}>Calendario del equipo</h2>

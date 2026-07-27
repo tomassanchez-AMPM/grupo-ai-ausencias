@@ -76,6 +76,9 @@ interface StoreValor {
   crearSolicitud: (datos: NuevaSolicitud) => Promise<Resultado>
   resolverSolicitud: (id: string, decision: 'aprobada' | 'rechazada', comentario?: string) => Promise<Resultado>
   cancelarSolicitud: (id: string) => Promise<Resultado>
+  /** Cancela una APROBADA (solo jefe directo o admin; motivo obligatorio).
+   *  Los días regresan solos al saldo porque el saldo se calcula, no se guarda. */
+  cancelarAprobada: (id: string, motivo: string) => Promise<Resultado>
   crearAjuste: (ajuste: Omit<AjusteSaldo, 'id' | 'actorId' | 'fecha'>) => Promise<Resultado>
   guardarEmpleado: (empleado: Empleado, esNuevo: boolean) => Promise<Resultado>
   guardarTipoAusencia: (tipo: TipoAusencia, esNuevo: boolean) => Promise<Resultado>
@@ -384,6 +387,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true }
     }
 
+    const cancelarAprobada = async (id: string, motivo: string): Promise<Resultado> => {
+      const actor = yo()
+      const solicitud = datos.solicitudes.find((s) => s.id === id)
+      if (!actor || !solicitud || solicitud.estado !== 'aprobada')
+        return { ok: false, error: 'Solo se cancelan solicitudes aprobadas.' }
+      if (!motivo.trim()) return { ok: false, error: 'Escribe el motivo de la cancelación.' }
+      const empleado = datos.empleados.find((e) => e.id === solicitud.empleadoId)
+      const tipo = datos.tiposAusencia.find((t) => t.id === solicitud.tipoAusenciaId)
+      if (!empleado || !tipo) return { ok: false, error: 'Datos incompletos.' }
+
+      const { data: actualizadas, error } = await supabase
+        .from('solicitudes')
+        .update({
+          estado: 'cancelada',
+          comentario_aprobador: motivo.trim(),
+          resuelta_en: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('estado', 'aprobada')
+        .select()
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      if (!actualizadas || actualizadas.length === 0) {
+        await cargarDatos()
+        return { ok: false, error: 'La solicitud ya no está aprobada.' }
+      }
+
+      // La auditoría con el motivo la escribe la base (trigger).
+      const reintegro = reintegroDe(solicitud)
+      if (empleado.id !== actor.id) {
+        await notificar(
+          empleado.id,
+          `${actor.nombre} canceló tu solicitud aprobada de ${tipo.nombre} (desde el ${formatearCorto(solicitud.fechaInicio)}, reintegro el ${formatearCorto(reintegro.fecha)}). Motivo: "${motivo.trim()}". Los días regresaron a tu saldo.`,
+          id,
+        )
+      }
+      await cargarDatos()
+      return { ok: true }
+    }
+
     const crearAjuste = async (ajuste: Omit<AjusteSaldo, 'id' | 'actorId' | 'fecha'>): Promise<Resultado> => {
       const actor = yo()
       if (!actor) return { ok: false, error: 'Sesión no válida.' }
@@ -498,7 +540,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sesion, datos, hoy, cargandoDatos,
       paisDe, politicaDe, aprobadorDe, saldoDe, equipoDe, pendientesDe,
       entrarConCorreo, entrarConCodigo, cerrarSesion, recargar: cargarDatos,
-      crearSolicitud, resolverSolicitud, cancelarSolicitud, crearAjuste,
+      crearSolicitud, resolverSolicitud, cancelarSolicitud, cancelarAprobada, crearAjuste,
       guardarEmpleado, guardarTipoAusencia, agregarFeriado, eliminarFeriado,
       marcarLeidas,
     }
