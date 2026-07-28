@@ -21,6 +21,8 @@ const SMTP_FROM = Deno.env.get("SMTP_FROM") ?? "Pausa <noreplay@ampm.com.ni>";
 // corrompen al plegarse en la codificación RFC 2047 (bug visto en Outlook:
 // "en=u buzón"). Bajo ~55 caracteres no hay plegado y las tildes viajan bien.
 function asuntoPara(mensaje: string): string {
+  // Antes que " aprobó ": las copias de gobernanza también contienen ese verbo.
+  if (mensaje.startsWith("Copia informativa:")) return "Pausa · Aprobación en el equipo";
   if (mensaje.includes(" solicitó ")) return "Pausa · Nueva solicitud pendiente";
   if (mensaje.includes(" aprobó ")) return "Pausa · Tu solicitud fue aprobada";
   if (mensaje.includes(" rechazó ")) return "Pausa · Tu solicitud fue rechazada";
