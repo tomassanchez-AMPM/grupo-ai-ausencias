@@ -81,19 +81,24 @@ export function EmpleadoView({ empleado }: { empleado: Empleado }) {
           const saldo = saldoDe(empleado, tipo.id)
           const politica = politicaDe(empleado, tipo.id)
           if (!saldo || !politica) return null
-          const disponibles = Math.max(saldo.disponibleMedios - saldo.pendienteMedios, 0) / 2
-          const total = (saldo.disponibleMedios + saldo.usadoMedios) / 2 || 1
+          const disponibles = (saldo.disponibleMedios - saldo.pendienteMedios) / 2
+          const total = Math.max((saldo.disponibleMedios + saldo.usadoMedios) / 2, 1)
+          const sobregirado = disponibles < 0
           return (
             <div className="tarjeta" key={tipo.id}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <p className="saldo-sub" style={{ fontWeight: 650 }}>{tipo.icono} {tipo.nombre}</p>
-                  <p className="saldo-numero">{Number.isInteger(disponibles) ? disponibles : disponibles.toFixed(1)}</p>
-                  <p className="saldo-sub">días disponibles</p>
+                  <p className="saldo-numero" style={sobregirado ? { color: 'var(--peligro)' } : undefined}>
+                    {Number.isInteger(disponibles) ? disponibles : disponibles.toFixed(1)}
+                  </p>
+                  <p className="saldo-sub">
+                    {sobregirado ? 'sobregirado — se cubre con tu acumulación' : 'días disponibles'}
+                  </p>
                 </div>
               </div>
               <div className="barra-progreso" aria-hidden="true">
-                <div style={{ width: `${Math.min((disponibles / total) * 100, 100)}%`, background: tipo.color }} />
+                <div style={{ width: `${Math.min(Math.max((disponibles / total) * 100, 0), 100)}%`, background: tipo.color }} />
               </div>
               <p className="saldo-sub" style={{ marginTop: 8 }}>
                 Usados: {formatearDias(saldo.usadoMedios)}

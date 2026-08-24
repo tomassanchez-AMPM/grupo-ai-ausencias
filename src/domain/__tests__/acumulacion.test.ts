@@ -126,3 +126,28 @@ describe('calcularSaldo — el saldo se calcula, no se guarda', () => {
     expect(saldo.usadoMedios).toBe(0)
   })
 })
+
+describe('sobregiro — aprobar sin saldo deja deuda que se cubre con la acumulación', () => {
+  const empleado2024: Empleado = { ...empleadoBase, fechaIngreso: '2024-01-01' }
+  const sinTope: PoliticaAusencia = { ...politicaMensual, carryoverMaxDias: undefined }
+  // 2024 acumula 60 medios (30 días); se aprueban 120 medios → fin de año −60.
+  const sobregiro = [solicitudAprobada(120, '2024-06-01')]
+
+  it('la deuda se arrastra al cruzar el año (no se perdona)', () => {
+    const saldo = calcularSaldo(sinTope, empleado2024, '2025-01-15', sobregiro, [])
+    expect(saldo.carryoverMedios).toBe(-60)
+    expect(saldo.disponibleMedios).toBe(-60)
+  })
+
+  it('la acumulación futura va cubriendo el sobregiro', () => {
+    // 2025 acumula 60 medios completos → la deuda de −60 queda saldada.
+    const saldo = calcularSaldo(sinTope, empleado2024, '2026-01-15', sobregiro, [])
+    expect(saldo.disponibleMedios).toBe(0)
+  })
+
+  it('el tope de carryover limita lo positivo, nunca recorta la deuda', () => {
+    // politicaMensual tiene carryoverMaxDias 10: la deuda de −60 pasa íntegra.
+    const saldo = calcularSaldo(politicaMensual, empleado2024, '2025-01-15', sobregiro, [])
+    expect(saldo.carryoverMedios).toBe(-60)
+  })
+})

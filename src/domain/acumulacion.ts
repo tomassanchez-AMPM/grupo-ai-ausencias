@@ -38,7 +38,10 @@ export function acumuladoEnAnio(
 
   const base = diasBaseDelAnio(politica, empleado, anio)
   const desde = ingreso > inicioAnio ? empleado.fechaIngreso : `${anio}-01-01`
-  const hasta = finPeriodo.getFullYear() > anio ? `${anio}-12-31` : hastaISO
+  // Un mes se acredita al COMPLETARSE (el de junio, el 1 de julio). Para un
+  // año ya cerrado el límite es el 1 de enero siguiente: cortar al 31-dic
+  // perdía el 12.º mes de todos los años cerrados (bug corregido 27-jul-2026).
+  const hasta = finPeriodo.getFullYear() > anio ? `${anio + 1}-01-01` : hastaISO
 
   switch (politica.metodoAcumulacion) {
     case 'anual': {
@@ -107,6 +110,8 @@ export interface DetalleSaldo {
  * para arrastrar el carryover con su tope y expiración.
  * Simplificación de prototipo: el uso de cada año consume primero el
  * carryover; si a la fecha de expiración quedaba carryover sin usar, se pierde.
+ * El resultado puede ser NEGATIVO (sobregiro): una aprobación sin saldo
+ * suficiente deja deuda que la acumulación futura va cubriendo.
  */
 export function calcularSaldo(
   politica: PoliticaAusencia,
@@ -120,7 +125,9 @@ export function calcularSaldo(
   let carryover = 0
 
   for (let anio = anioIngreso; anio < anioActual; anio++) {
-    const acumulado = acumuladoEnAnio(politica, empleado, anio, `${anio}-12-31`)
+    // El 1 de enero siguiente, no el 31-dic: el 12.º mes se acredita al
+    // completarse y cortar antes lo perdía (ver acumuladoEnAnio).
+    const acumulado = acumuladoEnAnio(politica, empleado, anio, `${anio + 1}-01-01`)
     const usado = usadoEnAnio(solicitudes, empleado.id, politica.tipoAusenciaId, anio)
     const ajustado = ajustadoEnAnio(ajustes, empleado.id, politica.tipoAusenciaId, anio)
     let saldoFin = carryover + acumulado + ajustado - usado
@@ -129,10 +136,13 @@ export function calcularSaldo(
       const base = diasBaseDelAnio(politica, empleado, anio)
       saldoFin = Math.min(saldoFin, Math.round(base * politica.topeMultiplicador * 2))
     }
+    // El sobregiro (saldo negativo por una aprobación sin saldo suficiente)
+    // SÍ se arrastra entre años: la deuda se cubre con la acumulación futura
+    // (decisión 27-jul-2026). El tope de carryover solo limita lo positivo.
     carryover =
       politica.carryoverMaxDias != null
-        ? Math.min(Math.max(saldoFin, 0), politica.carryoverMaxDias * 2)
-        : Math.max(saldoFin, 0)
+        ? Math.min(saldoFin, politica.carryoverMaxDias * 2)
+        : saldoFin
   }
 
   // Expiración del carryover en el año en curso.

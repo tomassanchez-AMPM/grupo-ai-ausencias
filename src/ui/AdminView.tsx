@@ -196,7 +196,7 @@ function PestanaEmpleados() {
           Puesto: e.puesto,
           País: paisDe(e)?.nombre ?? e.pais,
           'Ingreso': e.fechaIngreso,
-          'Disponible (días)': saldo ? Math.max(saldo.disponibleMedios, 0) / 2 : null,
+          'Disponible (días)': saldo ? saldo.disponibleMedios / 2 : null,
           'Usado en el año (días)': saldo ? saldo.usadoMedios / 2 : null,
           'En trámite (días)': saldo ? saldo.pendienteMedios / 2 : null,
           'Arrastre (días)': saldo ? saldo.carryoverMedios / 2 : null,
@@ -240,7 +240,14 @@ function PestanaEmpleados() {
                   <td>{pais?.bandera} {pais?.nombre}</td>
                   <td><span className={`insignia ${e.rol === 'admin' ? 'primaria' : 'neutra'}`}>{e.rol === 'admin' ? 'Admin/RRHH' : e.rol === 'jefe' ? 'Jefe' : 'Empleado'}</span></td>
                   <td>{e.managerId ? aprobador?.nombre : <span className="meta">{aprobador?.nombre} (designado)</span>}</td>
-                  <td>{saldo ? <strong>{formatearDias(Math.max(saldo.disponibleMedios, 0))}</strong> : <span className="meta">—</span>}</td>
+                  <td>
+                    {saldo ? (
+                      <strong style={saldo.disponibleMedios < 0 ? { color: 'var(--peligro)' } : undefined}>
+                        {formatearDias(saldo.disponibleMedios)}
+                        {saldo.disponibleMedios < 0 && <span className="meta" style={{ fontWeight: 400 }}> (sobregiro)</span>}
+                      </strong>
+                    ) : <span className="meta">—</span>}
+                  </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="boton-fantasma" onClick={() => setEditando(e)}>Editar</button>
                     <button className="boton-fantasma" onClick={() => setAjustando(e)}>Ajustar saldo</button>

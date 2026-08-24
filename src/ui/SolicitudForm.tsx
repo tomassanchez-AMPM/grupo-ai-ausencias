@@ -174,16 +174,33 @@ export function SolicitudForm({ empleado, onCerrar }: { empleado: Empleado; onCe
       </div>
 
       {rango ? (
-        <p className="nota-info" style={{ marginBottom: 14 }}>
-          Descuenta <strong style={{ color: 'var(--texto)' }}>{formatearDias(medioDias)}</strong>
-          {' '}({pais.bandera} {pais.nombre}: {ETIQUETA_CONTEO[pais.metodoConteo]}).
-          Te reintegras el <strong style={{ color: 'var(--texto)' }}>{formatearLargo(fechaReintegro)}</strong>
-          {reintegroMediodia && ' al mediodía'}.
-          {saldo && (
-            <> Saldo disponible: <strong style={{ color: 'var(--texto)' }}>{formatearDias(Math.max(saldo.disponibleMedios - saldo.pendienteMedios, 0))}</strong>.</>
+        <>
+          <p className="nota-info" style={{ marginBottom: 14 }}>
+            Descuenta <strong style={{ color: 'var(--texto)' }}>{formatearDias(medioDias)}</strong>
+            {' '}({pais.bandera} {pais.nombre}: {ETIQUETA_CONTEO[pais.metodoConteo]}).
+            Te reintegras el <strong style={{ color: 'var(--texto)' }}>{formatearLargo(fechaReintegro)}</strong>
+            {reintegroMediodia && ' al mediodía'}.
+            {saldo && (
+              <> Saldo disponible: <strong style={{ color: 'var(--texto)' }}>{formatearDias(saldo.disponibleMedios - saldo.pendienteMedios)}</strong>.</>
+            )}
+            {' '}Aprueba: {aprobador?.nombre ?? 'por definir'}.
+          </p>
+          {saldo && medioDias > saldo.disponibleMedios - saldo.pendienteMedios && (
+            <p
+              role="alert"
+              style={{
+                marginBottom: 14, padding: '10px 14px', borderRadius: 10, fontSize: 13.5,
+                background: 'var(--aviso-suave)', border: '1px solid #F5D9A8', color: 'var(--texto)',
+              }}
+            >
+              ⚠️ <strong>Esta solicitud supera tu saldo</strong> (contando lo que ya tienes en trámite).
+              Puedes enviarla igual: tu aprobador verá el aviso y, si la aprueba, quedarás
+              sobregirado en{' '}
+              <strong>{formatearDias(medioDias - (saldo.disponibleMedios - saldo.pendienteMedios))}</strong>,
+              que se irá cubriendo con tu acumulación de los próximos meses.
+            </p>
           )}
-          {' '}Aprueba: {aprobador?.nombre ?? 'por definir'}.
-        </p>
+        </>
       ) : (
         <p className="error-inline" style={{ marginBottom: 14 }}>
           El reintegro debe ser posterior al primer día de ausencia (o el mismo día solo si vuelves al mediodía).

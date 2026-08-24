@@ -46,11 +46,25 @@ function TarjetaAprobacion({ solicitud }: { solicitud: SolicitudAusencia }) {
             <p className="meta" style={{ marginTop: 4, fontStyle: 'italic' }}>“{solicitud.comentarioEmpleado}”</p>
           )}
           {solicitud.adjuntoNombre && <p className="meta" style={{ marginTop: 2 }}>📎 {solicitud.adjuntoNombre}</p>}
-          {saldo && (
-            <p className="meta" style={{ marginTop: 4 }}>
-              Saldo del empleado tras aprobar: {formatearDias(Math.max(saldo.disponibleMedios - solicitud.medioDias, 0))}
+          {saldo && (saldo.disponibleMedios - solicitud.medioDias < 0 ? (
+            <p
+              role="alert"
+              style={{
+                marginTop: 8, padding: '10px 14px', borderRadius: 10, fontSize: 13.5,
+                background: 'var(--aviso-suave)', border: '1px solid #F5D9A8', color: 'var(--texto)',
+              }}
+            >
+              ⚠️ <strong>No cuenta con el saldo requerido</strong>: tiene{' '}
+              <strong>{formatearDias(saldo.disponibleMedios)}</strong> y esta solicitud descuenta{' '}
+              <strong>{formatearDias(solicitud.medioDias)}</strong>. Si la apruebas quedará{' '}
+              <strong>sobregirado en {formatearDias(solicitud.medioDias - saldo.disponibleMedios)}</strong>,
+              y el sobregiro se irá cubriendo con su acumulación de los próximos meses.
             </p>
-          )}
+          ) : (
+            <p className="meta" style={{ marginTop: 4 }}>
+              Saldo del empleado tras aprobar: {formatearDias(saldo.disponibleMedios - solicitud.medioDias)}
+            </p>
+          ))}
           <div className="campo" style={{ marginTop: 10, marginBottom: 10 }}>
             <input
               type="text"
@@ -342,7 +356,12 @@ export function JefeView({ jefe }: { jefe: Empleado }) {
                         const saldo = saldoDe(miembro, t.id)
                         return (
                           <td key={t.id}>
-                            {saldo ? <strong>{formatearDias(Math.max(saldo.disponibleMedios, 0))}</strong> : <span className="meta">sin política</span>}
+                            {saldo ? (
+                              <strong style={saldo.disponibleMedios < 0 ? { color: 'var(--peligro)' } : undefined}>
+                                {formatearDias(saldo.disponibleMedios)}
+                                {saldo.disponibleMedios < 0 && <span className="meta" style={{ fontWeight: 400 }}> (sobregiro)</span>}
+                              </strong>
+                            ) : <span className="meta">sin política</span>}
                           </td>
                         )
                       })}

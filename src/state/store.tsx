@@ -283,16 +283,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (tipo.requiereAdjunto && !entrada.adjuntoNombre)
         return { ok: false, error: `${tipo.nombre} requiere un documento adjunto (ej. certificado).` }
 
-      if (tipo.descuentaSaldo) {
-        const saldo = saldoDe(empleado, tipo.id)
-        if (saldo && medioDias > saldo.disponibleMedios - saldo.pendienteMedios) {
-          const libre = Math.max(saldo.disponibleMedios - saldo.pendienteMedios, 0)
-          return {
-            ok: false,
-            error: `Saldo insuficiente: la solicitud descuenta ${formatearDias(medioDias)} y tienes ${formatearDias(libre)} libres (contando pendientes).`,
-          }
-        }
-      }
+      // Sin saldo suficiente la solicitud SÍ se permite (decisión 27-jul-2026):
+      // el formulario avisa al solicitante, el aprobador ve la alerta de
+      // sobregiro en su bandeja, y si aprueba el saldo queda negativo y se va
+      // cubriendo con la acumulación futura.
       if (tipo.topeAnualDias != null) {
         const usadoAnio = datos.solicitudes
           .filter((s) => s.empleadoId === empleado.id && s.tipoAusenciaId === tipo.id
