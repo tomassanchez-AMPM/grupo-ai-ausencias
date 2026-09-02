@@ -25,17 +25,20 @@ const AVATARES = ['#5B77D3', '#0E9F6E', '#C27803', '#D93025', '#7E3AF2', '#1D2C7
 
 // ---------- Empleados ----------
 
-function ModalEmpleado({ original, onCerrar }: { original?: Empleado; onCerrar: () => void }) {
+function ModalEmpleado({ original, actor, onCerrar }: { original?: Empleado; actor: Empleado; onCerrar: () => void }) {
   const { datos, guardarEmpleado } = useStore()
+  const esGestor = actor.rol === 'gestor'
   const [empleado, setEmpleado] = useState<Empleado>(
     original ?? {
       id: '',
       nombre: '', email: '', pais: 'NI', puesto: '',
       fechaIngreso: new Date().toISOString().slice(0, 10),
-      managerId: null, rol: 'empleado', activo: true,
+      managerId: esGestor ? actor.id : null, rol: 'empleado', activo: true,
       avatarColor: AVATARES[Math.floor(Math.random() * AVATARES.length)],
+      empresaId: actor.empresaId,
     },
   )
+  const [saldoInicial, setSaldoInicial] = useState('')
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
 
@@ -44,8 +47,17 @@ function ModalEmpleado({ original, onCerrar }: { original?: Empleado; onCerrar: 
       setError('Nombre y correo son obligatorios.')
       return
     }
+    if (esGestor && !empleado.managerId) {
+      setError('Asigna un jefe (aprobador) al empleado.')
+      return
+    }
+    const saldoNumero = saldoInicial.trim() ? Number(saldoInicial) : undefined
+    if (saldoNumero != null && (Number.isNaN(saldoNumero) || saldoNumero < 0)) {
+      setError('El saldo inicial debe ser un número de días (admite medios, ej. 12.5).')
+      return
+    }
     setGuardando(true)
-    const resultado = await guardarEmpleado(empleado, !original)
+    const resultado = await guardarEmpleado(empleado, !original, saldoNumero)
     setGuardando(false)
     if (!resultado.ok) {
       setError(resultado.error)
@@ -54,7 +66,10 @@ function ModalEmpleado({ original, onCerrar }: { original?: Empleado; onCerrar: 
     onCerrar()
   }
 
-  const posiblesJefes = datos.empleados.filter((e) => e.id !== empleado.id && e.activo)
+  // El gestor solo asigna jefes de su propia empresa (la base lo exige igual).
+  const posiblesJefes = datos.empleados.filter(
+    (e) => e.id !== empleado.id && e.activo && (!esGestor || e.empresaId === actor.empresaId),
+  )
 
   return (
     <Modal titulo={original ? `Editar a ${original.nombre}` : 'Nuevo empleado'} onCerrar={onCerrar}>
@@ -86,14 +101,14 @@ function ModalEmpleado({ original, onCerrar }: { original?: Empleado; onCerrar: 
       </div>
       <div className="fila-campos">
         <div className="campo">
-          <label htmlFor="jefe">Jefe (aprobador)</label>
+          <label htmlFor="empresa">Empresa</label>
           <select
-            id="jefe"
-            value={empleado.managerId ?? ''}
-            onChange={(e) => setEmpleado({ ...empleado, managerId: e.target.value || null })}
+            id="empresa"
+            value={empleado.empresaId}
+            onChange={(e) => setEmpleado({ ...empleado, empresaId: e.target.value })}
+            disabled={esGestor}
           >
-            <option value="">Sin jefe → admin designado</option>
-            {posiblesJefes.map((j) => <option key={j.id} value={j.id}>{j.nombre}</option>)}
+            {datos.empresas.map((em) => <option key={em.id} value={em.id}>{em.nombre}</option>)}
           </select>
         </div>
         <div className="campo">
@@ -101,9 +116,38 @@ function ModalEmpleado({ original, onCerrar }: { original?: Empleado; onCerrar: 
           <select id="rol" value={empleado.rol} onChange={(e) => setEmpleado({ ...empleado, rol: e.target.value as Empleado['rol'] })}>
             <option value="empleado">Empleado</option>
             <option value="jefe">Jefe (aprobador)</option>
-            <option value="admin">Administrador / RRHH</option>
+            {!esGestor && <option value="gestor">Gestor de empresa (RRHH delegado)</option>}
+            {!esGestor && <option value="admin">Administrador / RRHH</option>}
           </select>
         </div>
+      </div>
+      <div className="fila-campos">
+        <div className="campo">
+          <label htmlFor="jefe">Jefe (aprobador)</label>
+          <select
+            id="jefe"
+            value={empleado.managerId ?? ''}
+            onChange={(e) => setEmpleado({ ...empleado, managerId: e.target.value || null })}
+          >
+            {!esGestor && <option value="">Sin jefe → admin designado</option>}
+            {esGestor && !empleado.managerId && <option value="">Elige un jefe…</option>}
+            {posiblesJefes.map((j) => <option key={j.id} value={j.id}>{j.nombre}</option>)}
+          </select>
+        </div>
+        {!original ? (
+          <div className="campo">
+            <label htmlFor="saldo-inicial">Saldo inicial de vacaciones (días que trae, opcional)</label>
+            <input
+              id="saldo-inicial"
+              type="number"
+              step="0.5"
+              min="0"
+              placeholder="Ej. 12.5 — vacío = solo lo que acumule"
+              value={saldoInicial}
+              onChange={(e) => setSaldoInicial(e.target.value)}
+            />
+          </div>
+        ) : <div className="campo" />}
       </div>
       <div className="campo">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -181,19 +225,89 @@ function ModalAjuste({ empleado, onCerrar }: { empleado: Empleado; onCerrar: () 
   )
 }
 
-function PestanaEmpleados() {
+function ModalEmpresas({ onCerrar }: { onCerrar: () => void }) {
+  const { datos, guardarEmpresa } = useStore()
+  const [nueva, setNueva] = useState('')
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const crear = async () => {
+    const nombre = nueva.trim()
+    if (!nombre) return
+    // id = slug estable derivado del nombre (sin tildes ni espacios)
+    const id = nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    if (!id || datos.empresas.some((e) => e.id === id)) {
+      setError('Ya existe una empresa con ese nombre (o el nombre no es válido).')
+      return
+    }
+    setGuardando(true)
+    const resultado = await guardarEmpresa({ id, nombre }, true)
+    setGuardando(false)
+    if (!resultado.ok) setError(resultado.error)
+    else setNueva('')
+  }
+
+  return (
+    <Modal titulo="Empresas del grupo" onCerrar={onCerrar}>
+      <p className="meta" style={{ marginBottom: 12 }}>
+        Cada empleado pertenece a una empresa. Un «gestor» administra las altas y bajas
+        solo de la suya. Las empresas no se eliminan (los históricos las referencian);
+        puedes renombrarlas.
+      </p>
+      {datos.empresas.map((em) => (
+        <div key={em.id} className="campo" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            defaultValue={em.nombre}
+            aria-label={`Nombre de ${em.nombre}`}
+            onBlur={(e) => {
+              const nombre = e.target.value.trim()
+              if (nombre && nombre !== em.nombre) void guardarEmpresa({ id: em.id, nombre }, false)
+            }}
+          />
+          <span className="meta" style={{ whiteSpace: 'nowrap' }}>
+            {datos.empleados.filter((p) => p.empresaId === em.id && p.activo).length} activos
+          </span>
+        </div>
+      ))}
+      <div className="campo" style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <input
+          placeholder="Nueva empresa…"
+          value={nueva}
+          onChange={(e) => setNueva(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void crear() }}
+        />
+        <button className="boton-primario" onClick={() => void crear()} disabled={guardando || !nueva.trim()}>
+          Agregar
+        </button>
+      </div>
+      {error && <p className="error-inline" role="alert">{error}</p>}
+    </Modal>
+  )
+}
+
+function PestanaEmpleados({ actor }: { actor: Empleado }) {
   const { datos, paisDe, aprobadorDe, saldoDe } = useStore()
   const [editando, setEditando] = useState<Empleado | 'nuevo' | null>(null)
   const [ajustando, setAjustando] = useState<Empleado | null>(null)
+  const [gestionandoEmpresas, setGestionandoEmpresas] = useState(false)
+  const [filtroEmpresa, setFiltroEmpresa] = useState('todas')
+
+  const esGestor = actor.rol === 'gestor'
+  const listado = datos.empleados.filter((e) =>
+    esGestor ? e.empresaId === actor.empresaId : (filtroEmpresa === 'todas' || e.empresaId === filtroEmpresa),
+  )
+  const nombreEmpresa = (id: string) => datos.empresas.find((em) => em.id === id)?.nombre ?? id
 
   const exportarSaldos = () => {
     void exportarExcel('saldos-vacaciones', [{
       nombre: 'Saldos',
-      filas: datos.empleados.filter((e) => e.activo).map((e) => {
+      filas: listado.filter((e) => e.activo).map((e) => {
         const saldo = saldoDe(e, 'vacaciones')
         return {
           Persona: e.nombre,
           Puesto: e.puesto,
+          Empresa: nombreEmpresa(e.empresaId),
           País: paisDe(e)?.nombre ?? e.pais,
           'Ingreso': e.fechaIngreso,
           'Disponible (días)': saldo ? saldo.disponibleMedios / 2 : null,
@@ -208,8 +322,22 @@ function PestanaEmpleados() {
   return (
     <>
       <div className="encabezado-seccion">
-        <h2>Empleados ({datos.empleados.filter((e) => e.activo).length} activos)</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <h2>Empleados ({listado.filter((e) => e.activo).length} activos)</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {!esGestor && (
+            <select
+              aria-label="Filtrar por empresa"
+              value={filtroEmpresa}
+              onChange={(e) => setFiltroEmpresa(e.target.value)}
+              style={{ width: 'auto' }}
+            >
+              <option value="todas">Todas las empresas</option>
+              {datos.empresas.map((em) => <option key={em.id} value={em.id}>{em.nombre}</option>)}
+            </select>
+          )}
+          {!esGestor && (
+            <button className="boton-secundario" onClick={() => setGestionandoEmpresas(true)}>🏢 Empresas</button>
+          )}
           <button className="boton-secundario" onClick={exportarSaldos}>⬇ Excel de saldos</button>
           <button className="boton-primario" onClick={() => setEditando('nuevo')}>+ Nuevo empleado</button>
         </div>
@@ -218,11 +346,11 @@ function PestanaEmpleados() {
         <table>
           <thead>
             <tr>
-              <th>Persona</th><th>País</th><th>Rol</th><th>Jefe / aprobador</th><th>Vacaciones disp.</th><th>Acciones</th>
+              <th>Persona</th>{!esGestor && <th>Empresa</th>}<th>País</th><th>Rol</th><th>Jefe / aprobador</th><th>Vacaciones disp.</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {datos.empleados.map((e) => {
+            {listado.map((e) => {
               const pais = paisDe(e)
               const aprobador = aprobadorDe(e)
               const saldo = saldoDe(e, 'vacaciones')
@@ -237,8 +365,11 @@ function PestanaEmpleados() {
                       </span>
                     </span>
                   </td>
+                  {!esGestor && <td>{nombreEmpresa(e.empresaId)}</td>}
                   <td>{pais?.bandera} {pais?.nombre}</td>
-                  <td><span className={`insignia ${e.rol === 'admin' ? 'primaria' : 'neutra'}`}>{e.rol === 'admin' ? 'Admin/RRHH' : e.rol === 'jefe' ? 'Jefe' : 'Empleado'}</span></td>
+                  <td><span className={`insignia ${e.rol === 'admin' || e.rol === 'gestor' ? 'primaria' : 'neutra'}`}>
+                    {e.rol === 'admin' ? 'Admin/RRHH' : e.rol === 'gestor' ? 'Gestor' : e.rol === 'jefe' ? 'Jefe' : 'Empleado'}
+                  </span></td>
                   <td>{e.managerId ? aprobador?.nombre : <span className="meta">{aprobador?.nombre} (designado)</span>}</td>
                   <td>
                     {saldo ? (
@@ -249,8 +380,14 @@ function PestanaEmpleados() {
                     ) : <span className="meta">—</span>}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="boton-fantasma" onClick={() => setEditando(e)}>Editar</button>
-                    <button className="boton-fantasma" onClick={() => setAjustando(e)}>Ajustar saldo</button>
+                    {esGestor && (e.id === actor.id || e.rol === 'admin' || e.rol === 'gestor') ? (
+                      <span className="meta">{e.id === actor.id ? 'tu ficha' : '—'}</span>
+                    ) : (
+                      <>
+                        <button className="boton-fantasma" onClick={() => setEditando(e)}>Editar</button>
+                        <button className="boton-fantasma" onClick={() => setAjustando(e)}>Ajustar saldo</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               )
@@ -258,8 +395,9 @@ function PestanaEmpleados() {
           </tbody>
         </table>
       </div>
-      {editando && <ModalEmpleado original={editando === 'nuevo' ? undefined : editando} onCerrar={() => setEditando(null)} />}
+      {editando && <ModalEmpleado original={editando === 'nuevo' ? undefined : editando} actor={actor} onCerrar={() => setEditando(null)} />}
       {ajustando && <ModalAjuste empleado={ajustando} onCerrar={() => setAjustando(null)} />}
+      {gestionandoEmpresas && <ModalEmpresas onCerrar={() => setGestionandoEmpresas(false)} />}
     </>
   )
 }
@@ -876,6 +1014,11 @@ function PestanaAuditoria() {
 export function AdminView({ admin }: { admin: Empleado }) {
   const [pestana, setPestana] = useState<Pestana>('empleados')
   const { datos } = useStore()
+  // El gestor administra SOLO su empresa (altas, bajas, ajustes); las demás
+  // pestañas son del admin de grupo. La base impone lo mismo vía RLS.
+  const esGestor = admin.rol === 'gestor'
+  const empresa = datos.empresas.find((e) => e.id === admin.empresaId)
+  const pestanasVisibles = esGestor ? PESTANAS.filter((p) => p.id === 'empleados') : PESTANAS
   const pendientesTotales = datos.solicitudes.filter((s) => s.estado === 'pendiente').length
 
   return (
@@ -883,24 +1026,31 @@ export function AdminView({ admin }: { admin: Empleado }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
         <Avatar empleado={admin} grande />
         <div>
-          <h1>Administración · RRHH</h1>
-          <p className="meta">{admin.nombre} · {pendientesTotales} solicitud{pendientesTotales === 1 ? '' : 'es'} pendiente{pendientesTotales === 1 ? '' : 's'} en toda la organización</p>
+          <h1>{esGestor ? `Mi empresa · ${empresa?.nombre ?? ''}` : 'Administración · RRHH'}</h1>
+          <p className="meta">
+            {admin.nombre}
+            {esGestor
+              ? ' · gestionas las altas, bajas y saldos de tu empresa'
+              : ` · ${pendientesTotales} solicitud${pendientesTotales === 1 ? '' : 'es'} pendiente${pendientesTotales === 1 ? '' : 's'} en toda la organización`}
+          </p>
         </div>
       </div>
 
-      <nav className="pestanas" aria-label="Secciones de administración">
-        {PESTANAS.map((p) => (
-          <button key={p.id} className={pestana === p.id ? 'activa' : ''} onClick={() => setPestana(p.id)} aria-current={pestana === p.id}>
-            {p.nombre}
-          </button>
-        ))}
-      </nav>
+      {pestanasVisibles.length > 1 && (
+        <nav className="pestanas" aria-label="Secciones de administración">
+          {pestanasVisibles.map((p) => (
+            <button key={p.id} className={pestana === p.id ? 'activa' : ''} onClick={() => setPestana(p.id)} aria-current={pestana === p.id}>
+              {p.nombre}
+            </button>
+          ))}
+        </nav>
+      )}
 
-      {pestana === 'empleados' && <PestanaEmpleados />}
-      {pestana === 'politicas' && <PestanaPoliticas />}
-      {pestana === 'feriados' && <PestanaFeriados />}
-      {pestana === 'reportes' && <PestanaReportes />}
-      {pestana === 'auditoria' && <PestanaAuditoria />}
+      {pestana === 'empleados' && <PestanaEmpleados actor={admin} />}
+      {!esGestor && pestana === 'politicas' && <PestanaPoliticas />}
+      {!esGestor && pestana === 'feriados' && <PestanaFeriados />}
+      {!esGestor && pestana === 'reportes' && <PestanaReportes />}
+      {!esGestor && pestana === 'auditoria' && <PestanaAuditoria />}
     </div>
   )
 }

@@ -13,6 +13,7 @@ const empleadoBase: Empleado = {
   rol: 'empleado',
   activo: true,
   avatarColor: '#888',
+  empresaId: 'ampm',
 }
 
 const politicaMensual: PoliticaAusencia = {

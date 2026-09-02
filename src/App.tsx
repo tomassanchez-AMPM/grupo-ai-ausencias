@@ -23,7 +23,8 @@ function Sesion({ persona }: { persona: Empleado }) {
 
   const vistas: { id: Vista; nombre: string }[] = [{ id: 'yo', nombre: 'Mi espacio' }]
   if (persona.rol !== 'empleado') vistas.push({ id: 'equipo', nombre: 'Mi equipo' })
-  if (persona.rol === 'admin') vistas.push({ id: 'admin', nombre: 'Administración' })
+  if (persona.rol === 'admin' || persona.rol === 'gestor')
+    vistas.push({ id: 'admin', nombre: persona.rol === 'admin' ? 'Administración' : 'Mi empresa' })
 
   return (
     <div className="app-shell">

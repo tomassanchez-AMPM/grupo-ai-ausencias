@@ -1,7 +1,14 @@
 // Modelo de datos — refleja la sección 4 del documento de diseño.
 // El saldo NUNCA se guarda: se calcula (ver accrual.ts / balance.ts).
 
-export type Rol = 'admin' | 'jefe' | 'empleado'
+/** «gestor» = RRHH delegado de UNA empresa: altas, bajas y ajustes solo de su
+ *  gente; no otorga roles ni toca otras empresas. Lo designa el admin. */
+export type Rol = 'admin' | 'gestor' | 'jefe' | 'empleado'
+
+export interface Empresa {
+  id: string
+  nombre: string
+}
 
 export type CodigoPais = 'NI' | 'HN' | 'SV' | 'PA'
 
@@ -78,6 +85,7 @@ export interface Empleado {
   rol: Rol
   activo: boolean
   avatarColor: string
+  empresaId: string
 }
 
 export type Fraccion = 'completo' | 'manana' | 'tarde'

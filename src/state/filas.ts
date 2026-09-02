@@ -4,6 +4,7 @@
 import type {
   AjusteSaldo,
   Empleado,
+  Empresa,
   Feriado,
   Notificacion,
   Pais,
@@ -75,7 +76,12 @@ export function aEmpleado(fila: any): Empleado {
     rol: fila.rol,
     activo: fila.activo,
     avatarColor: fila.avatar_color,
+    empresaId: fila.empresa_id,
   }
+}
+
+export function aEmpresa(fila: any): Empresa {
+  return { id: fila.id, nombre: fila.nombre }
 }
 
 export function aSolicitud(fila: any): SolicitudAusencia {

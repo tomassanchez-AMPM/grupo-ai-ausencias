@@ -11,13 +11,14 @@ import { calcularSaldo, type DetalleSaldo } from '../domain/acumulacion'
 import { contarMedioDias, formatearDias, reintegroDe } from '../domain/conteoDias'
 import { formatearISO, formatearCorto, parseFecha } from '../domain/fechas'
 import type {
-  AjusteSaldo, Empleado, Feriado, Fraccion, Notificacion,
+  AjusteSaldo, Empleado, Empresa, Feriado, Fraccion, Notificacion,
   Pais, PoliticaAusencia, RegistroAuditoria, SolicitudAusencia, TipoAusencia,
 } from '../domain/types'
 import * as filas from './filas'
 
 export interface DatosApp {
   empleados: Empleado[]
+  empresas: Empresa[]
   tiposAusencia: TipoAusencia[]
   politicas: PoliticaAusencia[]
   paises: Pais[]
@@ -29,7 +30,7 @@ export interface DatosApp {
 }
 
 const DATOS_VACIOS: DatosApp = {
-  empleados: [], tiposAusencia: [], politicas: [], paises: [], feriados: [],
+  empleados: [], empresas: [], tiposAusencia: [], politicas: [], paises: [], feriados: [],
   solicitudes: [], ajustes: [], auditoria: [], notificaciones: [],
 }
 
@@ -80,7 +81,10 @@ interface StoreValor {
    *  Los días regresan solos al saldo porque el saldo se calcula, no se guarda. */
   cancelarAprobada: (id: string, motivo: string) => Promise<Resultado>
   crearAjuste: (ajuste: Omit<AjusteSaldo, 'id' | 'actorId' | 'fecha'>) => Promise<Resultado>
-  guardarEmpleado: (empleado: Empleado, esNuevo: boolean) => Promise<Resultado>
+  /** saldoInicialDias (solo altas): días de vacaciones que la persona trae;
+   *  se registra como ajuste calibrado contra el motor, auditado. */
+  guardarEmpleado: (empleado: Empleado, esNuevo: boolean, saldoInicialDias?: number) => Promise<Resultado>
+  guardarEmpresa: (empresa: Empresa, esNueva: boolean) => Promise<Resultado>
   guardarTipoAusencia: (tipo: TipoAusencia, esNuevo: boolean) => Promise<Resultado>
   agregarFeriado: (feriado: Omit<Feriado, 'id'>) => Promise<Resultado>
   eliminarFeriado: (id: string) => Promise<Resultado>
@@ -105,25 +109,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCargandoDatos(true)
     try {
       // RLS recorta cada consulta a lo que el usuario puede ver.
-      const [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, auditoria, notificaciones] =
+      const [paises, tipos, politicas, feriados, empleados, empresas, solicitudes, ajustes, auditoria, notificaciones] =
         await Promise.all([
           supabase.from('paises').select('*').order('nombre'),
           supabase.from('tipos_ausencia').select('*').order('nombre'),
           supabase.from('politicas_ausencia').select('*'),
           supabase.from('feriados').select('*').order('fecha'),
           supabase.from('empleados').select('*').order('nombre'),
+          supabase.from('empresas').select('*').order('nombre'),
           supabase.from('solicitudes').select('*').order('creada_en', { ascending: false }),
           supabase.from('ajustes_saldo').select('*'),
           supabase.from('auditoria').select('*').order('timestamp', { ascending: false }).limit(500),
           supabase.from('notificaciones').select('*').order('timestamp', { ascending: false }).limit(100),
         ])
-      const primerError = [paises, tipos, politicas, feriados, empleados, solicitudes, ajustes, auditoria, notificaciones]
+      const primerError = [paises, tipos, politicas, feriados, empleados, empresas, solicitudes, ajustes, auditoria, notificaciones]
         .map((r) => r.error)
         .find(Boolean)
       if (primerError) throw primerError
 
       setDatos({
         paises: (paises.data ?? []).map(filas.aPais),
+        empresas: (empresas.data ?? []).map(filas.aEmpresa),
         tiposAusencia: (tipos.data ?? []).map(filas.aTipoAusencia),
         politicas: (politicas.data ?? []).map(filas.aPolitica),
         feriados: (feriados.data ?? []).map(filas.aFeriado),
@@ -443,7 +449,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true }
     }
 
-    const guardarEmpleado = async (empleado: Empleado, esNuevo: boolean): Promise<Resultado> => {
+    const guardarEmpleado = async (empleado: Empleado, esNuevo: boolean, saldoInicialDias?: number): Promise<Resultado> => {
       const fila = {
         nombre: empleado.nombre,
         email: empleado.email.trim().toLowerCase(),
@@ -454,6 +460,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         rol: empleado.rol,
         activo: empleado.activo,
         avatar_color: empleado.avatarColor,
+        empresa_id: empleado.empresaId,
       }
       const consulta = esNuevo
         ? supabase.from('empleados').insert(fila).select().single()
@@ -462,6 +469,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (error) return { ok: false, error: mensajeDeError(error) }
       await auditar(esNuevo ? 'creó empleado' : 'editó empleado', 'empleado', guardado.id,
         `${empleado.nombre} (${empleado.email}) — rol ${empleado.rol}${empleado.activo ? '' : ', inactivo'}`)
+
+      // Saldo inicial (solo en altas): la persona trae días acumulados de antes
+      // de entrar a Pausa. Se calibra igual que en la migración: el ajuste es
+      // la diferencia entre lo declarado y lo que el motor acumula solo.
+      if (esNuevo && saldoInicialDias != null && !Number.isNaN(saldoInicialDias)) {
+        const actor = yo()
+        const politica = datos.politicas.find(
+          (p) => p.pais === empleado.pais && p.tipoAusenciaId === 'vacaciones',
+        )
+        if (actor && politica) {
+          const nuevo = filas.aEmpleado(guardado)
+          const motor = calcularSaldo(politica, nuevo, hoy, [], []).disponibleMedios
+          const ajusteMedios = Math.round(saldoInicialDias * 2) - motor
+          if (ajusteMedios !== 0) {
+            const { data: ajuste, error: errorAjuste } = await supabase
+              .from('ajustes_saldo')
+              .insert({
+                empleado_id: guardado.id,
+                tipo_ausencia_id: 'vacaciones',
+                medio_dias: ajusteMedios,
+                motivo: `Saldo inicial declarado: ${saldoInicialDias} días al ${hoy} (alta)`,
+                fecha: hoy,
+                actor_id: actor.id,
+              })
+              .select()
+              .single()
+            if (errorAjuste) {
+              await cargarDatos()
+              return { ok: false, error: `Empleado creado, pero el saldo inicial falló: ${mensajeDeError(errorAjuste)}` }
+            }
+            await auditar('ajustó saldo', 'ajuste', ajuste.id,
+              `${ajusteMedios > 0 ? '+' : ''}${formatearDias(Math.abs(ajusteMedios))} a ${empleado.nombre} — saldo inicial de ${saldoInicialDias} días declarado en el alta`)
+          }
+        }
+      }
+      await cargarDatos()
+      return { ok: true }
+    }
+
+    const guardarEmpresa = async (empresa: Empresa, esNueva: boolean): Promise<Resultado> => {
+      if (!empresa.nombre.trim()) return { ok: false, error: 'Escribe el nombre de la empresa.' }
+      const consulta = esNueva
+        ? supabase.from('empresas').insert({ id: empresa.id, nombre: empresa.nombre.trim() })
+        : supabase.from('empresas').update({ nombre: empresa.nombre.trim() }).eq('id', empresa.id)
+      const { error } = await consulta
+      if (error) return { ok: false, error: mensajeDeError(error) }
+      await auditar(esNueva ? 'creó empresa' : 'renombró empresa', 'empresa', empresa.id, empresa.nombre.trim())
       await cargarDatos()
       return { ok: true }
     }
@@ -535,7 +589,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       paisDe, politicaDe, aprobadorDe, saldoDe, equipoDe, pendientesDe,
       entrarConCorreo, entrarConCodigo, cerrarSesion, recargar: cargarDatos,
       crearSolicitud, resolverSolicitud, cancelarSolicitud, cancelarAprobada, crearAjuste,
-      guardarEmpleado, guardarTipoAusencia, agregarFeriado, eliminarFeriado,
+      guardarEmpleado, guardarEmpresa, guardarTipoAusencia, agregarFeriado, eliminarFeriado,
       marcarLeidas,
     }
   }, [sesion, datos, hoy, cargarDatos])
