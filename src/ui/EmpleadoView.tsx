@@ -54,6 +54,7 @@ export function EmpleadoView({ empleado }: { empleado: Empleado }) {
   const { datos, paisDe, saldoDe, politicaDe } = useStore()
   const [formAbierto, setFormAbierto] = useState(false)
   const pais = paisDe(empleado)
+  const empresa = datos.empresas.find((em) => em.id === empleado.empresaId)
 
   const misSolicitudes = datos.solicitudes
     .filter((s) => s.empleadoId === empleado.id)
@@ -70,7 +71,7 @@ export function EmpleadoView({ empleado }: { empleado: Empleado }) {
         <div>
           <h1>Hola, {empleado.nombre.split(' ')[0]} 👋</h1>
           <p className="meta">
-            {empleado.puesto} · {pais?.bandera} {pais?.nombre}
+            {empleado.puesto}{empresa && <> · {empresa.nombre}</>} · {pais?.bandera} {pais?.nombre}
           </p>
         </div>
       </div>
