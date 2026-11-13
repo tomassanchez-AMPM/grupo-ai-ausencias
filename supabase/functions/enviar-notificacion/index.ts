@@ -23,6 +23,9 @@ const SMTP_FROM = Deno.env.get("SMTP_FROM") ?? "Pausa <noreplay@ampm.com.ni>";
 function asuntoPara(mensaje: string): string {
   // Antes que " aprobó ": las copias de gobernanza también contienen ese verbo.
   if (mensaje.startsWith("Copia informativa:")) return "Pausa · Aprobación en el equipo";
+  // Avisos de planilla: sin datos sensibles; el detalle se ve dentro del módulo.
+  if (mensaje.startsWith("Planilla:")) return "Pausa · Planilla";
+  if (mensaje.startsWith("Se actualizó la cuenta bancaria")) return "Pausa · Cambio en tu cuenta de pago";
   if (mensaje.includes(" solicitó ")) return "Pausa · Nueva solicitud pendiente";
   if (mensaje.includes(" aprobó ")) return "Pausa · Tu solicitud fue aprobada";
   if (mensaje.includes(" rechazó ")) return "Pausa · Tu solicitud fue rechazada";

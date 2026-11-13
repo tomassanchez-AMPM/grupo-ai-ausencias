@@ -55,5 +55,26 @@ src/domain/      lógica de negocio pura (tipos, fechas, conteo, acumulación) +
 src/state/       store React respaldado por Supabase + mapeo de filas
 src/ui/          vistas por rol (Empleado / Jefe / Admin), login, componentes
 src/reportes/    exportación a Excel
+src/planilla/    módulo de Planilla (acceso restringido; se carga aparte)
 supabase/        migraciones aplicadas (esquema, RLS, semilla, endurecimiento)
+supabase/tests/  suites SQL que corren contra la base y se revierten solas
 ```
+
+## Módulo de Planilla (Fase 1: cimientos)
+
+Fichas de planilla con historial y control de cambios. Reglas que conviene
+conocer antes de tocar el código:
+
+- Las tablas viven en el esquema privado `planilla`, que la API no expone. El
+  navegador solo llama funciones `public.pla_*`, y cada una verifica permiso de
+  planilla **y** segundo factor (`aal2`).
+- Nada se sobrescribe: compensación, empresas pagadoras, clases, cuenta y
+  deducciones llevan vigencia.
+- Todo cambio es una solicitud con doble control impuesto en la base: quien
+  propone no aprueba y nadie resuelve cambios sobre su propia ficha.
+- La bitácora es de solo inserción y la escriben disparadores, así que también
+  registra los cambios hechos por SQL directo.
+- El número de cuenta se guarda cifrado; la llave vive en Supabase Vault.
+
+Pruebas: ejecutar `supabase/tests/planilla_fase1.sql` contra la base. El éxito
+se anuncia con el error final `ROLLBACK_TESTS_OK n/n` (todo se revierte).

@@ -2,8 +2,10 @@
 // Cada usuario ve solo las secciones que su rol permite (sección 3 del
 // documento de diseño); la base de datos aplica la misma regla vía RLS.
 
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import type { Empleado } from './domain/types'
+import { supabase } from './lib/supabase'
+import type { AccesoPlanilla, NivelPlanilla } from './planilla/tipos'
 import { StoreProvider, useStore } from './state/store'
 import { AdminView } from './ui/AdminView'
 import { Campana } from './ui/Campana'
@@ -13,18 +15,34 @@ import { JefeView } from './ui/JefeView'
 import { LoginView } from './ui/LoginView'
 import { LogoPausa } from './ui/LogoPausa'
 
-type Vista = 'yo' | 'equipo' | 'admin'
+// Planilla se descarga solo cuando alguien con permiso la abre.
+const PlanillaView = lazy(() => import('./planilla/PlanillaView'))
+
+type Vista = 'yo' | 'equipo' | 'admin' | 'planilla'
 
 function Sesion({ persona }: { persona: Empleado }) {
   const { cerrarSesion } = useStore()
   const [vista, setVista] = useState<Vista>('yo')
+  const [nivelesPlanilla, setNivelesPlanilla] = useState<NivelPlanilla[]>([])
 
   useEffect(() => setVista('yo'), [persona.id])
+
+  // Solo pregunta si la persona tiene permiso de planilla (para mostrar la
+  // sección). Los datos exigen además segundo factor, y eso lo impone la base.
+  useEffect(() => {
+    let vigente = true
+    void supabase.rpc('pla_mi_acceso').then(({ data }) => {
+      const acceso = data as AccesoPlanilla | null
+      if (vigente) setNivelesPlanilla(acceso?.tiene_acceso ? acceso.niveles : [])
+    })
+    return () => { vigente = false }
+  }, [persona.id])
 
   const vistas: { id: Vista; nombre: string }[] = [{ id: 'yo', nombre: 'Mi espacio' }]
   if (persona.rol !== 'empleado') vistas.push({ id: 'equipo', nombre: 'Mi equipo' })
   if (persona.rol === 'admin' || persona.rol === 'gestor')
     vistas.push({ id: 'admin', nombre: persona.rol === 'admin' ? 'Administración' : 'Mi empresa' })
+  if (nivelesPlanilla.length > 0) vistas.push({ id: 'planilla', nombre: 'Planilla' })
 
   return (
     <div className="app-shell">
@@ -61,6 +79,11 @@ function Sesion({ persona }: { persona: Empleado }) {
         {vista === 'yo' && <EmpleadoView empleado={persona} />}
         {vista === 'equipo' && <JefeView jefe={persona} />}
         {vista === 'admin' && <AdminView admin={persona} />}
+        {vista === 'planilla' && nivelesPlanilla.length > 0 && (
+          <Suspense fallback={<p className="meta">Cargando Planilla…</p>}>
+            <PlanillaView persona={persona} niveles={nivelesPlanilla} />
+          </Suspense>
+        )}
       </main>
     </div>
   )
