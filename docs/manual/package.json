@@ -1,0 +1,13 @@
+{
+  "name": "manual-pausa",
+  "private": true,
+  "type": "module",
+  "description": "Fuente del manual de usuario de Pausa (HTML + capturas) y script que genera public/Manual-Pausa.pdf.",
+  "scripts": {
+    "pdf": "node generar-pdf.mjs",
+    "capturas": "node capturar-ingreso.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

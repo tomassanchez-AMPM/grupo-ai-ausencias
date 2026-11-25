@@ -58,6 +58,7 @@ src/reportes/    exportación a Excel
 src/planilla/    módulo de Planilla (acceso restringido; se carga aparte)
 supabase/        migraciones aplicadas (esquema, RLS, semilla, endurecimiento)
 supabase/tests/  suites SQL que corren contra la base y se revierten solas
+docs/manual/     fuente del manual de usuario (HTML + capturas) → public/Manual-Pausa.pdf
 ```
 
 ## Módulo de Planilla (Fase 1: cimientos)

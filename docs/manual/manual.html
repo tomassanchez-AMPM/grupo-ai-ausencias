@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Manual de Pausa</title>
+<!--
+  Fuente del manual de usuario de Pausa. De aquí sale public/Manual-Pausa.pdf
+  (ver README.md de esta carpeta). Cada página del PDF es un <section class="pagina">
+  de tamaño carta: si agregas texto, revisa que no se desborde.
+  Regla de contenido: cada afirmación debe poder señalarse en el código (src/ui,
+  src/state, src/domain, supabase/). Nada del módulo de Planilla.
+-->
+<style>
+  @page { size: Letter; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #1E2326;
+    background: #F7F6F2;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .pagina {
+    position: relative;
+    width: 816px;      /* 8.5 in */
+    height: 1056px;    /* 11 in */
+    padding: 50px 62px 70px;
+    background: #F7F6F2;
+    overflow: hidden;
+    break-after: page;
+  }
+  .pagina:last-child { break-after: auto; }
+
+  /* Portada */
+  .marca { display: flex; align-items: center; gap: 18px; }
+  .marca h1 { margin: 0; font-size: 42px; line-height: 1.1; letter-spacing: -0.5px; color: #0F3D3A; }
+  .marca .lema { margin: 2px 0 0; font-size: 15px; font-weight: 700; color: #5F6E66; }
+  .intro { margin: 14px 0 0; font-size: 14px; line-height: 1.6; color: #3E524A; }
+  .pildora {
+    display: inline-block; margin: 16px 0 0; padding: 9px 20px; border-radius: 22px;
+    background: #0F3D3A; color: #fff; font-size: 13px; font-weight: 700;
+  }
+
+  /* Secciones */
+  h2 { display: flex; align-items: center; gap: 10px; margin: 22px 0 8px; font-size: 21px; line-height: 1.2; color: #0F3D3A; }
+  .pagina > h2:first-child, .pagina > .dos-col:first-child h2 { margin-top: 0; }
+  h2 .num {
+    flex: none; width: 30px; height: 30px; border-radius: 50%;
+    display: inline-grid; place-items: center;
+    background: #0F3D3A; color: #fff; font-size: 16px;
+  }
+  h3 { margin: 12px 0 2px; font-size: 13.5px; color: #0F3D3A; }
+  p { margin: 0 0 8px; }
+  ol { margin: 0 0 10px; padding-left: 22px; }
+  ol li { margin-bottom: 4px; }
+  b, strong { font-weight: 700; }
+
+  .nota {
+    margin: 10px 0 0; padding: 10px 14px; border-radius: 10px;
+    background: #E6ECE8; color: #3E524A; font-size: 11.5px; line-height: 1.5;
+  }
+  .nota.aviso { background: #F7EFDD; border: 1px solid #F5D9A8; color: #1E2326; }
+  .nota b { color: #1E2326; }
+
+  /* Capturas */
+  .captura { margin: 0; }
+  .captura img {
+    display: block; width: 100%; height: auto;
+    border: 1px solid #DFE6DF; border-radius: 12px; background: #F7F6F2;
+  }
+  .captura figcaption { margin-top: 5px; font-size: 10.5px; line-height: 1.4; color: #5F6E66; text-align: center; }
+  .captura.centrada { margin: 0 auto; }
+  .dos-capturas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 10px; }
+  .dos-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  .dos-col.texto-ancho { grid-template-columns: 0.92fr 1.08fr; }
+
+  /* Preguntas frecuentes */
+  .faq h2 { margin-bottom: 6px; }
+  .faq dl { margin: 0; }
+  .faq dt { margin-top: 8px; font-weight: 700; color: #0F3D3A; }
+  .faq dd { margin: 0; font-size: 12px; line-height: 1.45; color: #3E524A; }
+
+  .pie {
+    position: absolute; left: 62px; right: 62px; bottom: 28px;
+    display: flex; justify-content: space-between;
+    padding-top: 8px; border-top: 1px solid #DFE6DF;
+    font-size: 10px; color: #97A59D;
+  }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────────── Página 1 ───────────────────────────── -->
+<section class="pagina">
+  <div class="marca">
+    <svg width="78" height="78" viewBox="0 0 64 64" role="img" aria-label="Logo de Pausa">
+      <circle cx="32" cy="27" r="17" fill="#EADBC1"/>
+      <rect x="24" y="15" width="6" height="19" rx="3" fill="#0F3D3A"/>
+      <rect x="34" y="15" width="6" height="19" rx="3" fill="#0F3D3A"/>
+      <rect x="13" y="40" width="38" height="4.5" rx="2.25" fill="#A7DCCB"/>
+      <rect x="19" y="47.5" width="26" height="4.5" rx="2.25" fill="#A7DCCB"/>
+      <rect x="25" y="55" width="14" height="4.5" rx="2.25" fill="#A7DCCB"/>
+    </svg>
+    <div>
+      <h1>Pausa</h1>
+      <p class="lema">Pedir. Aprobar. Desconectar.</p>
+    </div>
+  </div>
+
+  <p class="intro">Pausa es nuestra plataforma para pedir vacaciones y permisos. Tu saldo se calcula solo, tu jefe aprueba con un clic y todo queda registrado. Este manual te enseña lo esencial en 5 minutos.</p>
+  <span class="pildora">pausa → tomassanchez-ampm.github.io/grupo-ai-ausencias</span>
+
+  <h2><span class="num">1</span>Entra con tu correo y un código — sin contraseñas</h2>
+  <ol>
+    <li>Abre la plataforma y escribe <b>tu correo de trabajo</b> (el mismo donde recibiste este manual).</li>
+    <li>Pulsa <b>“Enviarme el acceso”</b>.</li>
+    <li>Te llegará un correo de <b>Pausa</b> con un <b>código de acceso</b> de 8 dígitos.</li>
+    <li>Escríbelo en la pantalla <b>“Revisa tu correo”</b>, pulsa <b>“Entrar con el código”</b> y ya estás dentro.</li>
+  </ol>
+
+  <div class="dos-capturas">
+    <figure class="captura">
+      <img src="capturas/ingreso-correo.png" alt="Pantalla «Inicia sesión» con el campo de correo y el botón «Enviarme el acceso»">
+      <figcaption>Pasos 1 y 2: escribe tu correo y pide el acceso.</figcaption>
+    </figure>
+    <figure class="captura">
+      <img src="capturas/ingreso-codigo.png" alt="Pantalla «Revisa tu correo» con el campo «Código de acceso» y el botón «Entrar con el código»">
+      <figcaption>Pasos 3 y 4: escribe el código que llegó a tu correo.</figcaption>
+    </figure>
+  </div>
+
+  <p class="nota">💡 El código es de <b>un solo uso</b> y vence pronto. Si pediste varios, vale el del último correo. ¿Venció o no te funcionó? Pulsa “Usar otro correo o pedir un código nuevo” y pide otro — no pasa nada. ¿No llega? Revisa la carpeta de spam.</p>
+
+  <div class="pie"><span>Manual de Pausa · noviembre de 2026 · pág. 1</span><span>Dudas: Tomás Sánchez</span></div>
+</section>
+
+<!-- ───────────────────────────── Página 2 ───────────────────────────── -->
+<section class="pagina">
+  <h2><span class="num">2</span>Tu espacio: saldo siempre al día</h2>
+  <div class="dos-col">
+    <figure class="captura">
+      <img src="capturas/mi-espacio-saldo.png" alt="Pantalla de inicio con el saludo, la tarjeta de saldo de vacaciones y el botón «+ Solicitar ausencia»">
+      <figcaption>Ejemplo con datos ficticios. Hoy, junto a tu puesto, también aparece tu empresa.</figcaption>
+    </figure>
+    <div>
+      <p>Al entrar ves tu espacio: arriba, tu nombre con tu puesto, <b>tu empresa</b> y tu país; debajo, tu <b>saldo de vacaciones disponible</b>, calculado automáticamente: lo que traías al inicio + lo que acumulas cada mes según las reglas de tu país − lo que ya usaste. Lo que tienes en trámite ya va descontado.</p>
+      <p class="nota">📅 Pausa cuenta los días <b>según la ley de tu país</b> (solo días laborables, días corridos sin feriados o días corridos) y ya conoce sus feriados. Antes de enviar verás qué regla te aplica.</p>
+    </div>
+  </div>
+
+  <h2><span class="num">3</span>Pide tus vacaciones en 30 segundos</h2>
+  <ol>
+    <li>Pulsa <b>“+ Solicitar ausencia”</b>.</li>
+    <li>Elige el tipo (vacaciones, enfermedad, permiso…).</li>
+    <li>Indica tu <b>primer día de ausencia</b> y tu <b>fecha de reintegro</b> (el día que vuelves a trabajar).</li>
+    <li>Antes de enviar, Pausa te muestra <b>cuántos días descuenta, tu saldo disponible y quién aprueba</b>. Envía y listo.</li>
+  </ol>
+  <figure class="captura centrada" style="width: 490px;">
+    <img src="capturas/solicitar-ausencia.png" alt="Formulario «Solicitar ausencia» con tipo, fechas, medios días, comentario y el resumen de días que descuenta">
+  </figure>
+  <p class="nota">🔑 <b>La fecha de reintegro es la clave</b>: si vuelves un lunes, el fin de semana cuenta o no según la ley de tu país — Pausa hace ese cálculo por ti y te lo muestra antes de enviar. También puedes pedir medios días (“Desde la tarde” en el primer día / “Al mediodía” en el reintegro).</p>
+  <p class="nota aviso">⚠️ <b>¿No te alcanza el saldo? Puedes enviar la solicitud igual.</b> Pausa te avisa que supera tu saldo y en cuánto quedarías sobregirado; tu aprobador ve el mismo aviso y decide. Si la aprueba, tu saldo queda negativo (lo verás en rojo, como “sobregirado”) y se va cubriendo con tu acumulación de los próximos meses.</p>
+
+  <div class="pie"><span>Manual de Pausa · noviembre de 2026 · pág. 2</span><span>Dudas: Tomás Sánchez</span></div>
+</section>
+
+<!-- ───────────────────────────── Página 3 ───────────────────────────── -->
+<section class="pagina">
+  <h2><span class="num">4</span>¿Qué pasa después?</h2>
+  <div class="dos-col">
+    <figure class="captura">
+      <img src="capturas/mi-espacio-pendiente.png" alt="Pantalla de inicio con una solicitud de vacaciones en estado Pendiente y el botón «Cancelar solicitud»">
+    </figure>
+    <div>
+      <p>Tu solicitud queda <b>Pendiente</b> y tu aprobador recibe un aviso al instante (en la app y por correo). Cuando decida, <b>te llega un correo</b> con la respuesta y su comentario.</p>
+      <p>¿Cambiaste de planes? Mientras esté pendiente puedes <b>cancelarla</b> tú mismo desde “Mis solicitudes”.</p>
+      <p>¿Ya estaba aprobada? Pídele a tu jefe o a Administración que la cancele: escriben el motivo, los días <b>regresan a tu saldo</b> y recibes el aviso por correo.</p>
+    </div>
+  </div>
+
+  <h2><span class="num">5</span>Si apruebas a un equipo</h2>
+  <div class="dos-col texto-ancho">
+    <div>
+      <p>En tu pestaña <b>“Mi equipo”</b> encuentras la <b>bandeja de aprobaciones</b>: cada tarjeta muestra quién pide, las fechas, cuántos días descuenta y cómo queda su saldo si apruebas.</p>
+      <p>Escribe un comentario si quieres y pulsa <b>✓ Aprobar</b> o <b>✕ Rechazar</b>. La persona recibe la respuesta por correo al momento, y tu propio jefe recibe una copia informativa de lo que apruebas.</p>
+    </div>
+    <figure class="captura">
+      <img src="capturas/mi-equipo-bandeja.png" alt="Pestaña «Mi equipo» con la bandeja de aprobaciones y los botones Aprobar y Rechazar">
+    </figure>
+  </div>
+  <p class="nota aviso">⚠️ <b>Si a la persona no le alcanza el saldo</b>, la tarjeta te lo avisa: cuánto tiene, cuánto descuenta la solicitud y en cuánto quedaría sobregirada. Tú decides; si apruebas, su saldo queda negativo y se cubre con su acumulación de los próximos meses.</p>
+
+  <h3>Cancelar una ausencia ya aprobada</h3>
+  <p>Cuando tu equipo tiene ausencias aprobadas en curso o por venir, debajo de la bandeja aparece la sección <b>“Aprobadas en curso o próximas”</b>. Una aprobada no se edita, se cancela:</p>
+  <ol>
+    <li>Pulsa <b>“Cancelar esta ausencia…”</b> en la tarjeta.</li>
+    <li>Escribe el <b>motivo</b> (es obligatorio y la persona lo verá).</li>
+    <li>Pulsa <b>“Confirmar cancelación”</b>. Los días regresan solos a su saldo, se le avisa por correo y queda registrado.</li>
+  </ol>
+  <p>Si solo cambian las fechas, cancela y pídele que solicite de nuevo. Como jefe cancelas las de tu equipo directo; Administración, las de toda la organización.</p>
+
+  <p class="nota">👀 En la misma pestaña tienes el <b>calendario del equipo</b> (quién está fuera y cuándo, con feriados marcados) y los saldos de tu gente; un saldo negativo aparece en rojo con la marca “(sobregiro)”.</p>
+
+  <div class="pie"><span>Manual de Pausa · noviembre de 2026 · pág. 3</span><span>Dudas: Tomás Sánchez</span></div>
+</section>
+
+<!-- ───────────────────────────── Página 4 ───────────────────────────── -->
+<section class="pagina">
+  <h2><span class="num">6</span>El calendario del equipo</h2>
+  <figure class="captura centrada" style="width: 500px;">
+    <img src="capturas/mi-equipo-calendario-saldos.png" alt="Calendario mensual del equipo con un feriado marcado y la tabla de saldos del equipo">
+    <figcaption>Cada ausencia lleva el color de su tipo; en tono tenue, las que siguen pendientes.</figcaption>
+  </figure>
+
+  <div class="faq">
+    <h2>Preguntas frecuentes</h2>
+    <dl>
+      <dt>“El código de acceso no funciona”</dt>
+      <dd>Cada código sirve una sola vez y vence pronto. Usa el del último correo que te llegó; si ya venció, pulsa “Usar otro correo o pedir un código nuevo” y pide otro.</dd>
+
+      <dt>“No me llega el correo”</dt>
+      <dd>Revisa spam/correo no deseado y márcalo como confiable. Si sigue sin llegar, avísale a Tomás.</dd>
+
+      <dt>“Dice que mi correo no está registrado”</dt>
+      <dd>Entraste con un correo distinto al que tiene RRHH. Pulsa “Salir e intentar con otro correo” y usa tu correo de trabajo; si ya era ese, pide a RRHH que te registre con ese correo exacto.</dd>
+
+      <dt>“¿Cómo se calculó mi saldo inicial?”</dt>
+      <dd>Si ya estabas cuando arrancó Pausa, es el saldo que traías en el control anterior al 30 de junio de 2026; si te registraron después, es el saldo que RRHH declaró al darte de alta. Desde ahí, Pausa acumula sola mes a mes según tu país.</dd>
+
+      <dt>“¿Puedo pedir más días de los que tengo?”</dt>
+      <dd>Sí. Pausa te avisa que la solicitud supera tu saldo y tu aprobador decide. Si la aprueba, quedas sobregirado y lo vas cubriendo con tu acumulación de los próximos meses.</dd>
+
+      <dt>“Ya me aprobaron y necesito cambiar las fechas”</dt>
+      <dd>Una solicitud aprobada no se edita: pídele a tu jefe que la cancele (los días regresan a tu saldo) y solicita de nuevo con las fechas correctas.</dd>
+
+      <dt>“¿Puedo pedir medio día?”</dt>
+      <dd>Sí: al pedir, elige “Desde la tarde” en el primer día o “Al mediodía” en el reintegro.</dd>
+
+      <dt>“¿Funciona en el teléfono?”</dt>
+      <dd>Sí — abre la misma dirección en el navegador de tu teléfono. No hay que instalar nada.</dd>
+
+      <dt>“¿Quién ve mis solicitudes?”</dt>
+      <dd>Tú, tu aprobador directo, RRHH de tu empresa y Administración. Cuando se aprueba una, el jefe de tu aprobador recibe además una copia informativa. Nadie más.</dd>
+    </dl>
+  </div>
+
+  <div class="pie"><span>Manual de Pausa · noviembre de 2026 · pág. 4</span><span>Pedir. Aprobar. Desconectar. 🌅</span></div>
+</section>
+
+</body>
+</html>
