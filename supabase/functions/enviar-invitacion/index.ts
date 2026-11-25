@@ -51,7 +51,6 @@ const HTML = `
           <p style="margin:0 0 4px 0;">📊 &nbsp;Ver tu saldo siempre al día (los feriados de tu país no descuentan).</p>
           <p style="margin:0 0 16px 0;">🔔 &nbsp;Recibir la aprobación por correo, con todo registrado.</p>
           <p style="margin:0 0 6px 0;">📘 El <b>manual de usuario va adjunto</b> (5 minutos de lectura) — también puedes verlo aquí: <a href="${URL_MANUAL}" style="color:#0F3D3A;font-weight:bold;">Manual de Pausa</a>.</p>
-          <p style="margin:0 0 18px 0;font-size:12.5px;color:#5B6B66;">Nota: el manual describe el ingreso con un enlace; hoy se entra con el código de acceso, como se indica arriba.</p>
         </td>
       </tr>
       <tr>
